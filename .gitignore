@@ -1,0 +1,27 @@
+# build artifacts
+build/
+cpp-service/build/
+
+# editor/OS
+.vscode/
+.idea/
+*.log
+*.tmp
+
+# dependencies and binaries
+node_modules/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# env/config
+docker/.env
+.env
+
+# caches
+**/.cache/
+**/.DS_Store
+
+
