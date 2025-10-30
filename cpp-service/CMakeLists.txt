@@ -1,23 +1,46 @@
-cmake_minimum_required(VERSION 3.24)
-project(collab_cpp_service LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.14)
+project(cpp-service)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# 强制 C++17 标准
+set(CMAKE_CXX_FLAGS "-std=c++17 -Wall ${CMAKE_CXX_FLAGS}")
 
-find_package(Drogon REQUIRED)
-find_package(PQXX REQUIRED)
+# Drogon 安装路径
+set(DROGON_INSTALL_PREFIX /home/dracarys/drogon/install)
+include_directories(${DROGON_INSTALL_PREFIX}/include)
+link_directories(${DROGON_INSTALL_PREFIX}/lib)
 
-add_executable(cpp-service
-  src/main.cpp
-  src/controllers/HealthController.cc
+# 找到 jsoncpp 库
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONCPP REQUIRED jsoncpp)
+include_directories(${JSONCPP_INCLUDE_DIRS})
+link_directories(${JSONCPP_LIBRARY_DIRS})
+
+# 源码文件
+set(ALL_SOURCES
+    src/main.cpp
+    src/controllers/HealthController.h
+    src/controllers/HealthController.cc
 )
 
-target_include_directories(cpp-service PRIVATE src)
+# 生成可执行文件
+add_executable(${PROJECT_NAME} ${ALL_SOURCES})
 
-target_link_libraries(cpp-service
-  PRIVATE
-    Drogon::Drogon
-    pqxx
+# 链接所有依赖（一次性包含 Drogon 可能用到的所有系统库）
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+    # Drogon 核心库
+    drogon
+    trantor
+    # 数据库相关
+    pqxx       # PostgreSQL C++ 库
+    pq         # PostgreSQL 核心库
+    sqlite3    # SQLite3 库（即使不用也要加，因为 Drogon 静态库包含相关代码）
+    # 其他系统库
+    ${JSONCPP_LIBRARIES}  # jsoncpp
+    ssl         # OpenSSL（加密）
+    crypto      # 加密算法
+    pthread     # 线程库
+    dl          # 动态链接库管理（dlopen/dlclose）
+    z           # zlib（压缩，Drogon 可能用到）
+    uuid
 )
-
-
