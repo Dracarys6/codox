@@ -9,17 +9,32 @@ set(DROGON_INSTALL_PREFIX /home/dracarys/drogon/install)
 include_directories(${DROGON_INSTALL_PREFIX}/include)
 link_directories(${DROGON_INSTALL_PREFIX}/lib)
 
+include(FetchContent)
+FetchContent_Declare(
+    jwt-cpp
+    GIT_REPOSITORY https://github.com/Thalhammer/jwt-cpp.git
+    GIT_TAG master  
+)
+FetchContent_MakeAvailable(jwt-cpp)
+
 # 找到 jsoncpp 库
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 include_directories(${JSONCPP_INCLUDE_DIRS})
 link_directories(${JSONCPP_LIBRARY_DIRS})
 
+
 # 源码文件
 set(ALL_SOURCES
     src/main.cpp
     src/controllers/HealthController.h
     src/controllers/HealthController.cc
+    src/utils/JwtUtil.h
+    src/utils/JwtUtil.cc
+    src/utils/PasswordUtils.h
+    src/utils/PasswordUtils.cc
+    src/utils/DbUtils.h
+    src/utils/DbUtils.cc
 )
 
 # 生成可执行文件
@@ -43,4 +58,5 @@ target_link_libraries(${PROJECT_NAME}
     dl          # 动态链接库管理（dlopen/dlclose）
     z           # zlib（压缩，Drogon 可能用到）
     uuid
+    jwt-cpp::jwt-cpp
 )
