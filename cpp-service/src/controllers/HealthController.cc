@@ -1,32 +1,47 @@
 #include "HealthController.h"
+#include <drogon/drogon.h>
+#include <drogon/orm/DbClient.h>
+#include <json/json.h>
+#include <string>
 
-void HealthController::health(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
-    Json::Value body;
-    body["status"] = "ok";  // 服务基础状态
+void HealthController::health(const HttpRequestPtr& req,
+    std::function<void(const HttpResponsePtr&)>&& callback) {
+    Json::Value responseJson;
+    responseJson["status"] = "ok";
+    responseJson["service"] = "cpp-service";
 
+    // 测试数据库连接（在 handler 中，run() 之后）
+    // 先简化：只检查数据库客户端是否可用，不使用异步查询
     try {
-        // 从环境变量获取数据库连接字符串
-        const char* conn = std::getenv("DB_URI");
-        if (conn && std::strlen(conn) > 0) {
-            // 尝试建立数据库连接并执行测试查询
-            pqxx::connection c { conn };
-            pqxx::work tx { c };
-            auto r = tx.exec("SELECT 1");  // 简单查询验证连接
-            (void)r;  // 避免未使用变量警告
-            tx.commit();
-            body["db"] = "ok";  // 数据库连接正常
+        // 尝试获取默认数据库客户端
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            // 尝试显式指定名称
+            db = drogon::app().getDbClient("default");
+        }
+        
+        if (db) {
+            responseJson["database"] = "connected";
+            // type() 返回枚举，转换为字符串
+            auto dbType = db->type();
+            responseJson["db_type"] = (dbType == drogon::orm::ClientType::PostgreSQL) ? "PostgreSQL" : "Unknown";
         }
         else {
-            body["db"] = "skipped";  // 未配置数据库连接，跳过检查
+            responseJson["database"] = "disconnected";
+            responseJson["db_error"] = "getDbClient() returned nullptr";
         }
     }
     catch (const std::exception& e) {
-        body["db"] = "error";      // 数据库检查失败
-        body["error"] = e.what();  // 记录错误信息
+        responseJson["database"] = "error";
+        responseJson["db_error"] = std::string(e.what());
+    }
+    catch (...) {
+        responseJson["database"] = "error";
+        responseJson["db_error"] = "unknown_exception";
     }
 
-    // 构建响应
-    auto resp = HttpResponse::newHttpJsonResponse(body);
+    auto resp = HttpResponse::newHttpJsonResponse(responseJson);
     resp->setStatusCode(k200OK);
     callback(resp);
 }
+

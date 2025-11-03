@@ -2,7 +2,6 @@
 #include<drogon/drogon.h>
 
 drogon::orm::DbClientPtr DbUtils::getDbClient() {
-    // Drogon 会自动管理连接池，直接从 app 获取即可
     return drogon::app().getDbClient();
 }
 

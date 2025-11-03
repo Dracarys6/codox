@@ -1,7 +1,5 @@
--- 多人在线协作编辑系统 - 数据库初始化脚本
-
 -- 用户与角色
-CREATE TABLE IF NOT EXISTS "user" (
+CREATE TABLE "user" (
   id BIGSERIAL PRIMARY KEY,
   email VARCHAR(255) UNIQUE,
   phone VARCHAR(32) UNIQUE,
@@ -11,7 +9,7 @@ CREATE TABLE IF NOT EXISTS "user" (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS user_profile (
+CREATE TABLE user_profile (
   user_id BIGINT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
   nickname VARCHAR(64),
   avatar_url TEXT,
@@ -19,7 +17,7 @@ CREATE TABLE IF NOT EXISTS user_profile (
 );
 
 -- 文档与访问控制
-CREATE TABLE IF NOT EXISTS document (
+CREATE TABLE document (
   id BIGSERIAL PRIMARY KEY,
   owner_id BIGINT NOT NULL REFERENCES "user"(id),
   title VARCHAR(255) NOT NULL,
@@ -29,7 +27,7 @@ CREATE TABLE IF NOT EXISTS document (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS doc_acl (
+CREATE TABLE doc_acl (
   doc_id BIGINT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
   user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
   permission VARCHAR(16) NOT NULL, -- owner/editor/viewer
@@ -37,7 +35,7 @@ CREATE TABLE IF NOT EXISTS doc_acl (
 );
 
 -- 文档版本（快照元数据 + 存储位置）
-CREATE TABLE IF NOT EXISTS document_version (
+CREATE TABLE document_version (
   id BIGSERIAL PRIMARY KEY,
   doc_id BIGINT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
   snapshot_url TEXT NOT NULL,
@@ -48,19 +46,19 @@ CREATE TABLE IF NOT EXISTS document_version (
 );
 
 -- 标签
-CREATE TABLE IF NOT EXISTS tag (
+CREATE TABLE tag (
   id BIGSERIAL PRIMARY KEY,
   name VARCHAR(64) UNIQUE NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS doc_tag (
+CREATE TABLE doc_tag (
   doc_id BIGINT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
   tag_id BIGINT NOT NULL REFERENCES tag(id) ON DELETE CASCADE,
   PRIMARY KEY (doc_id, tag_id)
 );
 
 -- 评论
-CREATE TABLE IF NOT EXISTS comment (
+CREATE TABLE comment (
   id BIGSERIAL PRIMARY KEY,
   doc_id BIGINT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
   author_id BIGINT NOT NULL REFERENCES "user"(id),
@@ -71,7 +69,7 @@ CREATE TABLE IF NOT EXISTS comment (
 );
 
 -- 任务
-CREATE TABLE IF NOT EXISTS task (
+CREATE TABLE task (
   id BIGSERIAL PRIMARY KEY,
   doc_id BIGINT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
   assignee_id BIGINT REFERENCES "user"(id),
@@ -84,7 +82,7 @@ CREATE TABLE IF NOT EXISTS task (
 );
 
 -- 通知
-CREATE TABLE IF NOT EXISTS notification (
+CREATE TABLE notification (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
   type VARCHAR(64) NOT NULL,
@@ -94,9 +92,8 @@ CREATE TABLE IF NOT EXISTS notification (
 );
 
 -- 索引
-CREATE INDEX IF NOT EXISTS idx_document_owner_updated ON document(owner_id, updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_doc_tag_tag ON doc_tag(tag_id);
-CREATE INDEX IF NOT EXISTS idx_comment_doc_created ON comment(doc_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_task_doc_status ON task(doc_id, status);
-CREATE INDEX IF NOT EXISTS idx_notification_user_created ON notification(user_id, created_at DESC);
+CREATE INDEX idx_document_owner_updated ON document(owner_id, updated_at DESC);
+CREATE INDEX idx_doc_tag_tag ON doc_tag(tag_id);
+CREATE INDEX idx_comment_doc_created ON comment(doc_id, created_at DESC);
+CREATE INDEX idx_task_doc_status ON task(doc_id, status);
 

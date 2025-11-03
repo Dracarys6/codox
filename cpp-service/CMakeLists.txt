@@ -9,24 +9,21 @@ set(DROGON_INSTALL_PREFIX /home/dracarys/drogon/install)
 include_directories(${DROGON_INSTALL_PREFIX}/include)
 link_directories(${DROGON_INSTALL_PREFIX}/lib)
 
-include(FetchContent)
-FetchContent_Declare(
-    jwt-cpp
-    GIT_REPOSITORY https://github.com/Thalhammer/jwt-cpp.git
-    GIT_TAG master  
-)
-FetchContent_MakeAvailable(jwt-cpp)
+# jwt-cpp 库（系统安装）
+set(JWT_CPP_ROOT "/usr/local")
+include_directories(${JWT_CPP_ROOT}/include)
 
-# 找到 jsoncpp 库
+# jsoncpp 库
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)
 include_directories(${JSONCPP_INCLUDE_DIRS})
 link_directories(${JSONCPP_LIBRARY_DIRS})
 
-
 # 源码文件
 set(ALL_SOURCES
     src/main.cpp
+    src/controllers/AuthController.h
+    src/controllers/AuthController.cc
     src/controllers/HealthController.h
     src/controllers/HealthController.cc
     src/utils/JwtUtil.h
@@ -40,7 +37,7 @@ set(ALL_SOURCES
 # 生成可执行文件
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})
 
-# 链接所有依赖（一次性包含 Drogon 可能用到的所有系统库）
+# 链接所有依赖
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
     # Drogon 核心库
@@ -49,7 +46,7 @@ target_link_libraries(${PROJECT_NAME}
     # 数据库相关
     pqxx       # PostgreSQL C++ 库
     pq         # PostgreSQL 核心库
-    sqlite3    # SQLite3 库（即使不用也要加，因为 Drogon 静态库包含相关代码）
+    sqlite3    # SQLite3 库
     # 其他系统库
     ${JSONCPP_LIBRARIES}  # jsoncpp
     ssl         # OpenSSL（加密）
@@ -58,5 +55,5 @@ target_link_libraries(${PROJECT_NAME}
     dl          # 动态链接库管理（dlopen/dlclose）
     z           # zlib（压缩，Drogon 可能用到）
     uuid
-    jwt-cpp::jwt-cpp
 )
+

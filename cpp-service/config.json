@@ -6,14 +6,17 @@
         }
     ],
     "app": {
+        "jwt_secret": "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789ab+cdefgh=",
+        "jwt_access_expires_in": 900,
+        "jwt_refresh_expires_in": 2592000,
         "threads_num": 4
     },
     "log": {
         "log_path": "./logs",
-        "log_level": "INFO"
+        "log_level": "DEBUG"
     },
     "plugins": [],
-    "rdbms": [
+    "db_clients": [
         {
             "name": "default",
             "rdbms": "postgresql",
@@ -21,8 +24,9 @@
             "port": 5432,
             "dbname": "collab",
             "user": "collab",
-            "passwd": "collab_pass",
-            "is_fast": true,
+            "passwd": "20050430",
+            "is_fast": false,
+            "connection_number": 5,
             "characterSet": "utf8"
         }
     ]

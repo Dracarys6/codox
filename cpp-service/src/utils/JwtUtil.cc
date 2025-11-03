@@ -21,18 +21,21 @@ std::string JwtUtil::generateToken(int userId, const std::string& secret, int ex
 
 bool JwtUtil::verifyToken(const std::string& token, const std::string& secret) {
     try {
-        //验证并解码 token
+        //1. 先解码 token（检查格式）
         auto decoded = jwt::decode(token);
 
-        //验证签名（不检查 issuer，因为生成时没有设置）
+        //2. 验证签名和过期时间
         auto verifier = jwt::verify()
             .allow_algorithm(jwt::algorithm::hs256 { secret });
 
+        // verify() 会自动检查：
+        // - 签名是否正确
+        // - 是否已过期（检查 exp claim）
         verifier.verify(decoded);
         return true;
     }
     catch (const std::exception& e) {
-        //token 无效或已过期
+        // token 无效、已过期、签名错误或格式错误
         return false;
     }
 }
