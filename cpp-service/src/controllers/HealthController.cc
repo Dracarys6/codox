@@ -10,16 +10,10 @@ void HealthController::health(const HttpRequestPtr& req,
     responseJson["status"] = "ok";
     responseJson["service"] = "cpp-service";
 
-    // 测试数据库连接（在 handler 中，run() 之后）
-    // 先简化：只检查数据库客户端是否可用，不使用异步查询
+    // 测试数据库连接
     try {
         // 尝试获取默认数据库客户端
         auto db = drogon::app().getDbClient();
-        if (!db) {
-            // 尝试显式指定名称
-            db = drogon::app().getDbClient("default");
-        }
-        
         if (db) {
             responseJson["database"] = "connected";
             // type() 返回枚举，转换为字符串

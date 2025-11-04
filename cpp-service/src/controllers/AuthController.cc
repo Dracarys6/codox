@@ -3,6 +3,7 @@
 #include "../utils/PasswordUtils.h"
 #include "../utils/JwtUtil.h"
 #include "../utils/DbUtils.h"
+#include "../utils/ResponseUtils.h"
 #include <drogon/drogon.h>
 #include <regex>
 #include <sstream>
@@ -13,7 +14,7 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
     //1.解析json请求体
     auto jsonPtr = req->jsonObject();
     if (!jsonPtr) {
-        sendError(callback, "Invalid JSON or missing body", k400BadRequest);
+        ResponseUtils::sendError(callback, "Invalid JSON or missing body", k400BadRequest);
         return;
     }
     Json::Value json = *jsonPtr;
@@ -23,18 +24,18 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
 
     //2.验证输入
     if (email.empty() || password.empty()) {
-        sendError(callback, "Email and password are required", k400BadRequest);
+        ResponseUtils::sendError(callback, "Email and password are required", k400BadRequest);
         return;
     }
     //验证邮箱格式
     std::regex emailRegex(R"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})");
     if (!std::regex_match(email, emailRegex)) {
-        sendError(callback, "Invalid email format", k400BadRequest);
+        ResponseUtils::sendError(callback, "Invalid email format", k400BadRequest);
         return;
     }
     //验证密码长度
     if (password.size() < 8) {
-        sendError(callback, "Password must be at least 8 characters", k400BadRequest);
+        ResponseUtils::sendError(callback, "Password must be at least 8 characters", k400BadRequest);
         return;
     }
 
@@ -42,7 +43,7 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
     // 根据配置 is_fast=false，使用 getDbClient()
     auto db = drogon::app().getDbClient();
     if (!db) {
-        sendError(callback, "Database not available", k500InternalServerError);
+        ResponseUtils::sendError(callback, "Database not available", k500InternalServerError);
         return;
     }
 
@@ -53,7 +54,7 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
         "SELECT id FROM \"user\" WHERE email = $1",
         [=](const drogon::orm::Result& r) mutable {
             if (!r.empty()) {
-                sendError(*callbackPtr, "Email already exists", k409Conflict);
+                ResponseUtils::sendError(*callbackPtr, "Email already exists", k409Conflict);
                 return;
             }
 
@@ -65,7 +66,7 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
                 "INSERT INTO \"user\" (email, password_hash, role) VALUES ($1, $2, $3) RETURNING id",
                 [=](const drogon::orm::Result& r) mutable {
                     if (r.empty()) {
-                        sendError(*callbackPtr, "Failed to create user", k500InternalServerError);
+                        ResponseUtils::sendError(*callbackPtr, "Failed to create user", k500InternalServerError);
                         return;
                     }
 
@@ -79,10 +80,10 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
                                 Json::Value responseJson;
                                 responseJson["id"] = userId;
                                 responseJson["email"] = email;
-                                sendSuccess(*callbackPtr, responseJson, k201Created);
+                                ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
                             },
                             [=](const drogon::orm::DrogonDbException& e) mutable {
-                                sendError(*callbackPtr, "Database error: " + std::string(e.base().what()), k500InternalServerError);
+                                ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()), k500InternalServerError);
                             },
                             userId, nickname
                         );
@@ -91,17 +92,17 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
                         Json::Value responseJson;
                         responseJson["id"] = userId;
                         responseJson["email"] = email;
-                        sendSuccess(*callbackPtr, responseJson, k201Created);
+                        ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
                     }
                 },
                 [=](const drogon::orm::DrogonDbException& e) mutable {
-                    sendError(*callbackPtr, "Database error: " + std::string(e.base().what()), k500InternalServerError);
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()), k500InternalServerError);
                 },
                 email, passwordHash, "viewer"
             );
         },
         [=](const drogon::orm::DrogonDbException& e) mutable {
-            sendError(*callbackPtr, "Database error: " + std::string(e.base().what()), k500InternalServerError);
+            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()), k500InternalServerError);
         },
         email
     );
@@ -114,7 +115,7 @@ void AuthController::loginHandler(const HttpRequestPtr& req,
     //1.解析json请求体
     auto jsonPtr = req->jsonObject();
     if (!jsonPtr) {
-        sendError(callback, "Invalid JSON", k400BadRequest);
+        ResponseUtils::sendError(callback, "Invalid JSON", k400BadRequest);
         return;
     }
 
@@ -123,14 +124,14 @@ void AuthController::loginHandler(const HttpRequestPtr& req,
     std::string password = json.get("password", "").asString();
 
     if (account.empty() || password.empty()) {
-        sendError(callback, "Account and password are required", k400BadRequest);
+        ResponseUtils::sendError(callback, "Account and password are required", k400BadRequest);
         return;
     }
 
     //2.查询用户(支持email或phone登录)
     auto db = drogon::app().getDbClient();
     if (!db) {
-        sendError(callback, "Database not available", k500InternalServerError);
+        ResponseUtils::sendError(callback, "Database not available", k500InternalServerError);
         return;
     }
 
@@ -146,14 +147,14 @@ void AuthController::loginHandler(const HttpRequestPtr& req,
         "WHERE u.email = $1 OR u.phone = $1",
         [=](const drogon::orm::Result& r) mutable {
             if (r.empty()) {
-                sendError(*callbackPtr, "Invalid credentials", k401Unauthorized);
+                ResponseUtils::sendError(*callbackPtr, "Invalid credentials", k401Unauthorized);
                 return;
             }
 
             //3.验证密码
             std::string storedHash = r[0]["password_hash"].as<std::string>();
             if (!PasswordUtils::verifyPassword(passwordCopy, storedHash)) {
-                sendError(*callbackPtr, "Invalid credentials", k401Unauthorized);
+                ResponseUtils::sendError(*callbackPtr, "Invalid credentials", k401Unauthorized);
                 return;
             }
 
@@ -183,10 +184,10 @@ void AuthController::loginHandler(const HttpRequestPtr& req,
             userJson["avatar_url"] = avatarUrl;
             responseJson["user"] = userJson;
 
-            sendSuccess(*callbackPtr, responseJson);
+            ResponseUtils::sendSuccess(*callbackPtr, responseJson);
         },
         [=](const drogon::orm::DrogonDbException& e) mutable {
-            sendError(*callbackPtr, "Database error: " + std::string(e.base().what()), k500InternalServerError);
+            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()), k500InternalServerError);
         },
         account
     );
@@ -198,7 +199,7 @@ void AuthController::refreshHandler(const HttpRequestPtr& req,
     //1.解析JSON
     auto jsonPtr = req->jsonObject();
     if (!jsonPtr) {
-        sendError(callback, "Invalid JSON", k400BadRequest);
+        ResponseUtils::sendError(callback, "Invalid JSON", k400BadRequest);
         return;
     }
 
@@ -206,7 +207,7 @@ void AuthController::refreshHandler(const HttpRequestPtr& req,
     std::string refreshToken = json.get("refresh_token", "").asString();
 
     if (refreshToken.empty()) {
-        sendError(callback, "Refresh token is required", k400BadRequest);
+        ResponseUtils::sendError(callback, "Refresh token is required", k400BadRequest);
         return;
     }
 
@@ -214,14 +215,14 @@ void AuthController::refreshHandler(const HttpRequestPtr& req,
     auto& appConfig = drogon::app().getCustomConfig();
     std::string secret = appConfig.get("jwt_secret", "default-secret").asString();
     if (!JwtUtil::verifyToken(refreshToken, secret)) {
-        sendError(callback, "Invalid or expired refresh token", k401Unauthorized);
+        ResponseUtils::sendError(callback, "Invalid or expired refresh token", k401Unauthorized);
         return;
     }
 
     //3.提取user_id
     int userId = JwtUtil::getUserIdFromToken(refreshToken);
     if (userId == -1) {
-        sendError(callback, "Invalid token", k401Unauthorized);
+        ResponseUtils::sendError(callback, "Invalid token", k401Unauthorized);
         return;
     }
 
@@ -231,44 +232,5 @@ void AuthController::refreshHandler(const HttpRequestPtr& req,
     //5.返回响应
     Json::Value responseJson;
     responseJson["access_token"] = newAccessToken;
-    sendSuccess(callback, responseJson);
-}
-
-//辅助方法实现
-
-void AuthController::sendError(
-    const std::function<void(const HttpResponsePtr&)>& callback,
-    const std::string& message,
-    int statusCode) {
-
-    Json::Value errorJson;
-    errorJson["error"] = message;
-    auto resp = HttpResponse::newHttpJsonResponse(errorJson);
-    resp->setStatusCode(static_cast<HttpStatusCode>(statusCode));
-    callback(resp);
-}
-
-void AuthController::sendSuccess(
-    const std::function<void(const HttpResponsePtr&)>& callback,
-    const Json::Value& data,
-    int statusCode) {
-
-    // 格式化 JSON 输出（pretty-print）
-    Json::StreamWriterBuilder builder;
-    builder["indentation"] = "  ";  // 使用 2 个空格缩进
-    builder["commentStyle"] = "None";
-    builder["enableYAMLCompatibility"] = false;
-    builder["dropNullPlaceholders"] = false;
-    builder["useSpecialFloats"] = false;
-    builder["precision"] = 17;
-
-    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
-    std::ostringstream os;
-    writer->write(data, &os);
-
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setBody(os.str());
-    resp->setContentTypeCode(CT_APPLICATION_JSON);
-    resp->setStatusCode(static_cast<HttpStatusCode>(statusCode));
-    callback(resp);
+    ResponseUtils::sendSuccess(callback, responseJson);
 }

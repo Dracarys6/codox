@@ -26,12 +26,18 @@ set(ALL_SOURCES
     src/controllers/AuthController.cc
     src/controllers/HealthController.h
     src/controllers/HealthController.cc
+    src/controllers/UserController.h
+    src/controllers/UserController.cc
     src/utils/JwtUtil.h
     src/utils/JwtUtil.cc
     src/utils/PasswordUtils.h
     src/utils/PasswordUtils.cc
     src/utils/DbUtils.h
     src/utils/DbUtils.cc
+    src/utils/ResponseUtils.h
+    src/utils/ResponseUtils.cc
+    src/middleware/JwtAuthFilter.h
+    src/middleware/JwtAuthFilter.cc
 )
 
 # 生成可执行文件

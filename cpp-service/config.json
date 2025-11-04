@@ -26,7 +26,7 @@
             "user": "collab",
             "passwd": "20050430",
             "is_fast": false,
-            "connection_number": 5,
+            "connection_number": 10,
             "characterSet": "utf8"
         }
     ]
