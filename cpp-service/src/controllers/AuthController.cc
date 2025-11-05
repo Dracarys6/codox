@@ -75,7 +75,7 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
                     // 6. 插入用户资料（如果有 nickname）
                     if (!nickname.empty()) {
                         db->execSqlAsync(
-                            "INSERT INTO user_profile (user_id, nickname) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET nickname = $2",
+                            "INSERT INTO user_profile (user_id, nickname) VALUES ($1::integer, $2) ON CONFLICT (user_id) DO UPDATE SET nickname = $2",
                             [=](const drogon::orm::Result&) mutable {
                                 Json::Value responseJson;
                                 responseJson["id"] = userId;
@@ -85,7 +85,7 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
                             [=](const drogon::orm::DrogonDbException& e) mutable {
                                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()), k500InternalServerError);
                             },
-                            userId, nickname
+                            std::to_string(userId), nickname
                         );
                     }
                     else {
@@ -137,8 +137,6 @@ void AuthController::loginHandler(const HttpRequestPtr& req,
 
     // 使用 shared_ptr 包装 callback 以支持异步调用
     auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
-    // 捕获 password 变量用于密码验证
-    std::string passwordCopy = password;
 
     db->execSqlAsync(
         "SELECT u.id, u.email, u.password_hash, u.role, p.nickname, p.avatar_url "
@@ -153,7 +151,7 @@ void AuthController::loginHandler(const HttpRequestPtr& req,
 
             //3.验证密码
             std::string storedHash = r[0]["password_hash"].as<std::string>();
-            if (!PasswordUtils::verifyPassword(passwordCopy, storedHash)) {
+            if (!PasswordUtils::verifyPassword(password, storedHash)) {
                 ResponseUtils::sendError(*callbackPtr, "Invalid credentials", k401Unauthorized);
                 return;
             }
