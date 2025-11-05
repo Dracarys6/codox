@@ -294,12 +294,12 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 ## 📚 文档
 
-- [总体设计](./docs/总体设计.md)
-- [详细设计](./docs/详细设计.md)
-- [AuthController 开发指南](./docs/AuthController开发指南.md)
-- [第一阶段开发指南](./docs/第一阶段开发指南.md)
+- **[总体设计文档](./docs/总体设计.md)** - 系统架构、模块划分、开发路线图
+- **[详细设计文档](./docs/详细设计.md)** - 数据库设计、API 规格、代码结构、部署指南
+- [第一阶段开发指南](./docs/第一阶段开发指南.md) - 用户认证与基础功能
+- **[第二阶段开发指南](./docs/第二阶段开发指南.md)** - 文档 CRUD、权限管理与版本控制
 - [开发提示与最佳实践](./docs/开发提示与最佳实践.md)
-- **[后端 API 测试方法](./docs/后端API测试方法.md)** - 如何使用 curl、HTTPie、Postman 等工具测试 API
+- [后端 API 测试方法](./docs/后端API测试方法.md)
 
 ## 🐛 常见问题
 

@@ -157,7 +157,7 @@ curl -s -X GET http://localhost:8080/api/users/me \
 
 HTTPie 是一个更友好的命令行 HTTP 客户端，语法更简洁。
 
-### 安装
+### 1.安装
 
 ```bash
 # Ubuntu/Debian
@@ -170,13 +170,13 @@ brew install httpie
 pip install httpie
 ```
 
-### 基本语法
+### 2.基本语法
 
 ```bash
 http <METHOD> <URL> [选项]
 ```
 
-### GET 请求示例
+### 3.GET 请求示例
 
 ```bash
 # 基本 GET 请求
@@ -187,7 +187,7 @@ http GET http://localhost:8080/api/users/me \
   Authorization:"Bearer <token>"
 ```
 
-### POST 请求示例
+### 4.POST 请求示例
 
 ```bash
 # POST JSON 数据（自动添加 Content-Type）
