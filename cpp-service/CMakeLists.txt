@@ -28,6 +28,8 @@ set(ALL_SOURCES
     src/controllers/HealthController.cc
     src/controllers/UserController.h
     src/controllers/UserController.cc
+    src/controllers/DocumentController.h
+    src/controllers/DocumentController.cc
     src/utils/JwtUtil.h
     src/utils/JwtUtil.cc
     src/utils/PasswordUtils.h

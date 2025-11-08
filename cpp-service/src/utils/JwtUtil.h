@@ -1,5 +1,5 @@
-#pragma once 
-#include<string>
+#pragma once
+#include <string>
 
 class JwtUtil {
 public:
@@ -10,5 +10,5 @@ public:
     static bool verifyToken(const std::string& token, const std::string& secret);
 
     // 从 token 中解析用户ID
-    static int getUserIdFromToken(const std::string& token); // 解析 payload
+    static int getUserIdFromToken(const std::string& token);  // 解析 payload
 };

@@ -1,9 +1,10 @@
 #include <drogon/drogon.h>
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <chrono>
 #include <unistd.h>  // for access()
+
+#include <chrono>
+#include <fstream>
+#include <iostream>
+#include <string>
 
 int main(int argc, char* argv[]) {
     // 查找配置文件（支持从不同目录运行）
@@ -16,12 +17,12 @@ int main(int argc, char* argv[]) {
 
     try {
         auto& app = drogon::app();
-        std::cout << "\nStarting Drogon server..." << std::endl;
+        std::cout << "==============================================" << std::endl;
+        std::cout << "Starting Drogon server..." << std::endl;
         std::cout << "检查连接状态请访问: http://localhost:8080/health" << std::endl;
-        app.loadConfigFile(configPath);                        // 加载配置文件
+        app.loadConfigFile(configPath);  // 加载配置文件
         app.run();
-    }
-    catch (const std::exception& e) {
+    } catch (const std::exception& e) {
         std::cerr << "Error starting application: " << e.what() << std::endl;
         return 1;
     }

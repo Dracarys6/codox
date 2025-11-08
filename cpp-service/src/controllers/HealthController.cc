@@ -1,11 +1,12 @@
 #include "HealthController.h"
+
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
 #include <json/json.h>
+
 #include <string>
 
-void HealthController::health(const HttpRequestPtr& req,
-    std::function<void(const HttpResponsePtr&)>&& callback) {
+void HealthController::health(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     Json::Value responseJson;
     responseJson["status"] = "ok";
     responseJson["service"] = "cpp-service";
@@ -19,17 +20,14 @@ void HealthController::health(const HttpRequestPtr& req,
             // type() 返回枚举，转换为字符串
             auto dbType = db->type();
             responseJson["db_type"] = (dbType == drogon::orm::ClientType::PostgreSQL) ? "PostgreSQL" : "Unknown";
-        }
-        else {
+        } else {
             responseJson["database"] = "disconnected";
             responseJson["db_error"] = "getDbClient() returned nullptr";
         }
-    }
-    catch (const std::exception& e) {
+    } catch (const std::exception& e) {
         responseJson["database"] = "error";
         responseJson["db_error"] = std::string(e.what());
-    }
-    catch (...) {
+    } catch (...) {
         responseJson["database"] = "error";
         responseJson["db_error"] = "unknown_exception";
     }
@@ -38,4 +36,3 @@ void HealthController::health(const HttpRequestPtr& req,
     resp->setStatusCode(k200OK);
     callback(resp);
 }
-
