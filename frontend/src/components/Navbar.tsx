@@ -13,79 +13,113 @@ export function Navbar() {
     return (
         <nav className="bg-white/90 backdrop-blur-md shadow-lg sticky top-0 z-50 border-b border-gray-100">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between h-16">
-                    <div className="flex">
+                <div className="flex flex-col items-center py-4 space-y-3">
+                    {/* Logo - 单独一行 */}
+                    <div className="w-full text-center">
                         <Link
                             to="/"
-                            className="flex items-center px-2 py-2 text-2xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 bg-clip-text text-transparent hover:from-blue-700 hover:via-purple-700 hover:to-blue-700 transition-all duration-300"
+                            className="text-xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 bg-clip-text text-transparent hover:from-blue-700 hover:via-purple-700 hover:to-blue-700 transition-all duration-300 inline-block"
                         >
                             MultiuserDocument
                         </Link>
-                        {user && (
-                            <div className="hidden sm:ml-10 sm:flex sm:space-x-1">
-                                <Link
-                                    to="/"
-                                    className="inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-all duration-200"
-                                >
-                                    首页
-                                </Link>
-                                <Link
-                                    to="/profile"
-                                    className="inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 rounded-lg hover:bg-blue-50 hover:text-blue-600 transition-all duration-200"
-                                >
-                                    个人资料
-                                </Link>
-                            </div>
-                        )}
                     </div>
-                    <div className="flex items-center">
-                        {user ? (
-                            <div className="flex items-center space-x-4">
-                                <div className="hidden md:flex items-center space-x-3 px-5 py-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-gray-200 shadow-sm">
-                                    {user.profile.avatar_url ? (
-                                        <img
-                                            src={user.profile.avatar_url}
-                                            alt={user.profile.nickname || user.email}
-                                            className="h-9 w-9 rounded-full object-cover ring-2 ring-white shadow-md"
-                                            onError={(e) => {
-                                                (e.target as HTMLImageElement).style.display = 'none';
-                                            }}
-                                        />
-                                    ) : (
-                                        <div className="h-9 w-9 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center shadow-md ring-2 ring-white">
-                                            <span className="text-white text-xs font-bold">
-                                                {(user.profile.nickname || user.email)[0].toUpperCase()}
-                                            </span>
-                                        </div>
-                                    )}
-                                    <span className="text-sm font-semibold text-gray-800">
-                                        {user.profile.nickname || user.email}
-                                    </span>
-                                </div>
-                                <button
-                                    onClick={handleLogout}
-                                    className="px-5 py-2.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-200 shadow-sm hover:shadow-md"
-                                >
-                                    登出
-                                </button>
+
+                    {/* 首页 - 单独一行 */}
+                    {user && (
+                        <div className="w-full text-center">
+                            <Link
+                                to="/"
+                                className="inline-block px-4 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
+                            >
+                                首页
+                            </Link>
+                        </div>
+                    )}
+
+                    {/* 我的文档 - 单独一行 */}
+                    {user && (
+                        <div className="w-full text-center">
+                            <Link
+                                to="/docs"
+                                className="inline-block px-4 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
+                            >
+                                我的文档
+                            </Link>
+                        </div>
+                    )}
+
+                    {/* 个人资料 - 单独一行 */}
+                    {user && (
+                        <div className="w-full text-center">
+                            <Link
+                                to="/profile"
+                                className="inline-block px-4 py-2 text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
+                            >
+                                个人资料
+                            </Link>
+                        </div>
+                    )}
+
+                    {/* 用户信息 - 单独一行 */}
+                    {user && (
+                        <div className="w-full text-center">
+                            <div className="inline-flex items-center space-x-2 px-3 py-1.5 bg-gray-50 rounded-lg">
+                                {user.profile.avatar_url ? (
+                                    <img
+                                        src={user.profile.avatar_url}
+                                        alt={user.profile.nickname || user.email}
+                                        className="h-7 w-7 rounded-full object-cover"
+                                        onError={(e) => {
+                                            (e.target as HTMLImageElement).style.display = 'none';
+                                        }}
+                                    />
+                                ) : (
+                                    <div className="h-7 w-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                                        <span className="text-white text-xs font-bold">
+                                            {(user.profile.nickname || user.email)[0].toUpperCase()}
+                                        </span>
+                                    </div>
+                                )}
+                                <span className="text-sm font-medium text-gray-700">
+                                    {user.profile.nickname || user.email}
+                                </span>
                             </div>
-                        ) : (
-                            <div className="flex items-center space-x-4">
+                        </div>
+                    )}
+
+                    {/* 登出按钮 - 单独一行 */}
+                    {user && (
+                        <div className="w-full text-center">
+                            <button
+                                onClick={handleLogout}
+                                className="inline-block px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                登出
+                            </button>
+                        </div>
+                    )}
+
+                    {/* 未登录状态 */}
+                    {!user && (
+                        <>
+                            <div className="w-full text-center">
                                 <Link
                                     to="/login"
-                                    className="text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
+                                    className="inline-block text-sm font-semibold text-gray-700 hover:text-gray-900 transition-colors px-3 py-2 rounded-lg hover:bg-gray-100"
                                 >
                                     登录
                                 </Link>
+                            </div>
+                            <div className="w-full text-center">
                                 <Link
                                     to="/register"
-                                    className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 rounded-xl hover:from-blue-700 hover:via-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl"
+                                    className="inline-block px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 rounded-xl hover:from-blue-700 hover:via-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-lg hover:shadow-xl"
                                 >
                                     注册
                                 </Link>
                             </div>
-                        )}
-                    </div>
+                        </>
+                    )}
                 </div>
             </div>
         </nav>
