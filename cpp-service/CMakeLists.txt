@@ -38,6 +38,8 @@ set(ALL_SOURCES
     src/utils/DbUtils.cc
     src/utils/ResponseUtils.h
     src/utils/ResponseUtils.cc
+    src/utils/PermissionUtils.h
+    src/utils/PermissionUtils.cc
     src/middleware/JwtAuthFilter.h
     src/middleware/JwtAuthFilter.cc
 )

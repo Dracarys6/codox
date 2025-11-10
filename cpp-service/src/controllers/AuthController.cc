@@ -138,6 +138,8 @@ void AuthController::loginHandler(const HttpRequestPtr& req, std::function<void(
         return;
     }
 
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
+
     db->execSqlAsync(
             "SELECT u.id, u.email, u.password_hash, u.role, p.nickname, p.avatar_url "
             "FROM \"user\" u "
@@ -145,14 +147,14 @@ void AuthController::loginHandler(const HttpRequestPtr& req, std::function<void(
             "WHERE u.email = $1 OR u.phone = $1",
             [=](const drogon::orm::Result& r) mutable {
                 if (r.empty()) {
-                    ResponseUtils::sendError(callback, "Invalid credentials", k401Unauthorized);
+                    ResponseUtils::sendError(*callbackPtr, "Invalid credentials", k401Unauthorized);
                     return;
                 }
 
                 // 3.验证密码
                 std::string storedHash = r[0]["password_hash"].as<std::string>();
                 if (!PasswordUtils::verifyPassword(password, storedHash)) {
-                    ResponseUtils::sendError(callback, "Invalid credentials", k401Unauthorized);
+                    ResponseUtils::sendError(*callbackPtr, "Invalid credentials", k401Unauthorized);
                     return;
                 }
 
@@ -182,10 +184,10 @@ void AuthController::loginHandler(const HttpRequestPtr& req, std::function<void(
                 userJson["avatar_url"] = avatarUrl;
                 responseJson["user"] = userJson;
 
-                ResponseUtils::sendSuccess(callback, responseJson);
+                ResponseUtils::sendSuccess(*callbackPtr, responseJson);
             },
             [=](const drogon::orm::DrogonDbException& e) mutable {
-                ResponseUtils::sendError(callback, "Database error: " + std::string(e.base().what()),
+                ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                          k500InternalServerError);
             },
             account);

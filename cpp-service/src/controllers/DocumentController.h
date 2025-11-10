@@ -11,10 +11,9 @@ public:
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(DocumentController::create, "/api/docs", Post, "JwtAuthFilter");
     ADD_METHOD_TO(DocumentController::list, "/api/docs", Get, "JwtAuthFilter");
-    ADD_METHOD_TO(DocumentController::getById, "/api/docs/{id}", Get, "JwtAuthFilter");
-    // TODO: 后续实现
-    // ADD_METHOD_TO(DocumentController::update, "/api/docs/{id}", Patch, "JwtAuthFilter");
-    // ADD_METHOD_TO(DocumentController::deleteDoc, "/api/docs/{id}", Delete, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::get, "/api/docs/{id}", Get, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::update, "/api/docs/{id}", Patch, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::deleteDoc, "/api/docs/{id}", Delete, "JwtAuthFilter");
     METHOD_LIST_END
 
     // 创建文档
@@ -22,8 +21,13 @@ public:
     // 获取文档列表
     void list(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
     // 获取文档详情
-    void getById(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
-    // TODO: 后续实现
-    // void update(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
-    // void deleteDoc(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void get(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    // 更新文档
+    void update(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    // 删除文档
+    void deleteDoc(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    // 辅助函数:处理标签更新
+    void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, const Json::Value &json,
+                          const drogon::orm::Result &docResult,
+                          std::shared_ptr<std::function<void(const drogon::HttpResponsePtr &)>> callbackPtr);
 };
