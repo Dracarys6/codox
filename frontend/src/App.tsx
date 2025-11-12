@@ -8,6 +8,7 @@ import { HomePage } from './pages/HomePage';
 import { DocumentListPage } from './pages/DocumentListPage';
 import { DocumentDetailPage } from './pages/DocumentDetailPage';
 import { DocumentEditPage } from './pages/DocumentEditPage';
+import { DocumentEditorPage } from './pages/DocumentEditorPage';
 import './index.css';
 
 function App() {
@@ -67,6 +68,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <DocumentEditPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/docs/:id/edit-content"
+            element={
+              <ProtectedRoute>
+                <DocumentEditorPage />
               </ProtectedRoute>
             }
           />

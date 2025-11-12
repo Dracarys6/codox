@@ -1,5 +1,6 @@
 #include "JwtUtil.h"
 
+#include <json/json.h>
 #include <jwt-cpp/jwt.h>
 
 #include <ctime>
@@ -19,6 +20,40 @@ std::string JwtUtil::generateToken(int userId, const std::string& secret, int ex
                          .sign(jwt::algorithm::hs256{secret});
 
     return token;
+}
+
+std::string JwtUtil::generateToken(const Json::Value& payload, const std::string& secret, int expiresIn) {
+    // 1. 计算过期时间戳（当前时间 + expiresIn）
+    auto now = std::chrono::system_clock::now();
+    auto exp = now + std::chrono::seconds(expiresIn);
+
+    // 2. 创建 token builder
+    auto tokenBuilder = jwt::create().set_type("JWT").set_issued_at(now).set_expires_at(exp);
+
+    // 3. 从 payload 中添加所有字段
+    for (const auto& key : payload.getMemberNames()) {
+        Json::Value value = payload[key];
+        if (value.isString()) {
+            tokenBuilder.set_payload_claim(key, jwt::claim(value.asString()));
+        } else if (value.isInt() || value.isInt64()) {
+            tokenBuilder.set_payload_claim(key, jwt::claim(std::to_string(value.asInt64())));
+        } else if (value.isUInt() || value.isUInt64()) {
+            tokenBuilder.set_payload_claim(key, jwt::claim(std::to_string(value.asUInt64())));
+        } else if (value.isDouble()) {
+            tokenBuilder.set_payload_claim(key, jwt::claim(std::to_string(value.asDouble())));
+        } else if (value.isBool()) {
+            tokenBuilder.set_payload_claim(key,
+                                           jwt::claim(value.asBool() ? std::string("true") : std::string("false")));
+        } else {
+            // 对于其他类型，转换为字符串
+            Json::StreamWriterBuilder builder;
+            std::string valueStr = Json::writeString(builder, value);
+            tokenBuilder.set_payload_claim(key, jwt::claim(valueStr));
+        }
+    }
+
+    // 4. 签名并返回
+    return tokenBuilder.sign(jwt::algorithm::hs256{secret});
 }
 
 bool JwtUtil::verifyToken(const std::string& token, const std::string& secret) {

@@ -141,10 +141,18 @@ export function DocumentDetailPage() {
                         </div>
                         <div className="w-full text-center">
                             <Link
-                                to={`/docs/${document.id}/edit`}
+                                to={`/docs/${document.id}/edit-content`}
                                 className="inline-block px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                             >
-                                编辑
+                                编辑内容
+                            </Link>
+                        </div>
+                        <div className="w-full text-center">
+                            <Link
+                                to={`/docs/${document.id}/edit`}
+                                className="inline-block px-4 py-2 text-sm font-medium text-white bg-gray-600 rounded-lg hover:bg-gray-700 transition-colors"
+                            >
+                                编辑信息
                             </Link>
                         </div>
                         {isOwner && (
@@ -219,11 +227,10 @@ export function DocumentDetailPage() {
                             <nav className="flex -mb-px">
                                 <button
                                     onClick={() => setActiveTab('info')}
-                                    className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                                        activeTab === 'info'
-                                            ? 'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                    }`}
+                                    className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'info'
+                                        ? 'border-blue-500 text-blue-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                        }`}
                                 >
                                     文档信息
                                 </button>
@@ -233,11 +240,10 @@ export function DocumentDetailPage() {
                                             setActiveTab('acl');
                                             loadAcl();
                                         }}
-                                        className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                                            activeTab === 'acl'
-                                                ? 'border-blue-500 text-blue-600'
-                                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                        }`}
+                                        className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'acl'
+                                            ? 'border-blue-500 text-blue-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                            }`}
                                     >
                                         权限管理
                                     </button>
@@ -247,11 +253,10 @@ export function DocumentDetailPage() {
                                         setActiveTab('versions');
                                         loadVersions();
                                     }}
-                                    className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
-                                        activeTab === 'versions'
-                                            ? 'border-blue-500 text-blue-600'
-                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                                    }`}
+                                    className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'versions'
+                                        ? 'border-blue-500 text-blue-600'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                        }`}
                                 >
                                     版本历史
                                 </button>

@@ -60,26 +60,22 @@ export function Navbar() {
                         </div>
                     )}
 
-                    {/* 用户信息 - 单独一行 */}
+                    {/* 用户信息 - 头像和用户名各占一行 */}
                     {user && (
-                        <div className="w-full text-center">
-                            <div className="inline-flex items-center space-x-2 px-3 py-1.5 bg-gray-50 rounded-lg">
-                                {user.profile.avatar_url ? (
-                                    <img
-                                        src={user.profile.avatar_url}
-                                        alt={user.profile.nickname || user.email}
-                                        className="h-7 w-7 rounded-full object-cover"
-                                        onError={(e) => {
-                                            (e.target as HTMLImageElement).style.display = 'none';
-                                        }}
-                                    />
-                                ) : (
-                                    <div className="h-7 w-7 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                                        <span className="text-white text-xs font-bold">
-                                            {(user.profile.nickname || user.email)[0].toUpperCase()}
-                                        </span>
-                                    </div>
-                                )}
+                        <div className="w-full text-center space-y-2">
+                            {/* 头像 - 单独一行 */}
+                            <div className="flex justify-center">
+                                <img
+                                    src={user.profile.avatar_url || 'https://picx.zhimg.com/80/v2-6dab014c0f11d5966dca5827b482afd6_720w.webp?source=1def8aca'}
+                                    alt={user.profile.nickname || user.email}
+                                    className="h-12 w-12 rounded-full object-cover border-2 border-gray-200"
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).src = 'https://picx.zhimg.com/80/v2-6dab014c0f11d5966dca5827b482afd6_720w.webp?source=1def8aca';
+                                    }}
+                                />
+                            </div>
+                            {/* 用户名 - 单独一行 */}
+                            <div className="flex justify-center">
                                 <span className="text-sm font-medium text-gray-700">
                                     {user.profile.nickname || user.email}
                                 </span>

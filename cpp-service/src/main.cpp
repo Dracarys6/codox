@@ -6,6 +6,8 @@
 #include <iostream>
 #include <string>
 
+#include "controllers/CollaborationController.h"
+
 int main(int argc, char* argv[]) {
     // 查找配置文件（支持从不同目录运行）
     std::string configPath = "config.json";
@@ -20,7 +22,8 @@ int main(int argc, char* argv[]) {
         std::cout << "==============================================" << std::endl;
         std::cout << "Starting Drogon server..." << std::endl;
         std::cout << "检查连接状态请访问: http://localhost:8080/health" << std::endl;
-        app.loadConfigFile(configPath);  // 加载配置文件
+        app.loadConfigFile(configPath);                                       // 加载配置文件
+        app.registerController(std::make_shared<CollaborationController>());  // 注册控制器
         app.run();
     } catch (const std::exception& e) {
         std::cerr << "Error starting application: " << e.what() << std::endl;

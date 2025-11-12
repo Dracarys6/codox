@@ -253,6 +253,39 @@ class ApiClient {
         return response.data;
     }
 
+    // ========== 协作相关 API ==========
+
+    /**
+     * 获取协作令牌
+     */
+    async getCollaborationToken(docId: number): Promise<{ token: string; expiresIn: number }> {
+        const response = await this.client.post<{ token: string; expiresIn: number }>('/collab/token', {
+            doc_id: docId,
+        });
+        return response.data;
+    }
+
+    /**
+     * 获取引导快照
+     */
+    async getBootstrap(docId: number): Promise<{ snapshot_url: string | null; sha256: string | null; version_id: number | null }> {
+        const response = await this.client.get<{ snapshot_url: string | null; sha256: string | null; version_id: number | null }>(
+            `/collab/bootstrap/${docId}`
+        );
+        return response.data;
+    }
+
+    /**
+     * 保存快照
+     */
+    async saveSnapshot(docId: number, data: { snapshot_url: string; sha256: string; size_bytes: number }): Promise<{ version_id: number; message: string }> {
+        const response = await this.client.post<{ version_id: number; message: string }>(
+            `/collab/snapshot/${docId}`,
+            data
+        );
+        return response.data;
+    }
+
     // ========== 工具方法 ==========
 
     /**

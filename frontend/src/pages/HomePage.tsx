@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Layout } from '../components/Layout';
 
@@ -69,22 +68,6 @@ export function HomePage() {
               </div>
             </div>
           )}
-
-          {/* Quick Actions */}
-          <div className="text-center space-y-3">
-            <Link
-              to="/docs"
-              className="inline-block px-6 py-3 text-sm font-semibold rounded-lg text-white bg-blue-600 hover:bg-blue-700 transition-colors mr-3"
-            >
-              我的文档
-            </Link>
-            <Link
-              to="/profile"
-              className="inline-block px-6 py-3 text-sm font-semibold rounded-lg text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors"
-            >
-              个人资料
-            </Link>
-          </div>
         </div>
       </div>
     </Layout>
