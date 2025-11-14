@@ -1,15 +1,31 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
-import { ProtectedRoute } from './components/ProtectedRoute';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
-import { ProfilePage } from './pages/ProfilePage';
 import { HomePage } from './pages/HomePage';
-import { DocumentListPage } from './pages/DocumentListPage';
-import { DocumentDetailPage } from './pages/DocumentDetailPage';
-import { DocumentEditPage } from './pages/DocumentEditPage';
-import { DocumentEditorPage } from './pages/DocumentEditorPage';
+import { DocumentsPage } from './pages/DocumentsPage';
+import { EditorPage } from './pages/EditorPage';
+import { ProfilePage } from './pages/ProfilePage';
 import './index.css';
+
+// 受保护的路由组件
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <i className="fa fa-spinner fa-spin text-4xl text-primary"></i>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
 
 function App() {
   return (
@@ -21,13 +37,30 @@ function App() {
         }}
       >
         <Routes>
+          <Route path="/" element={<Navigate to="/home" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route
-            path="/"
+            path="/home"
             element={
               <ProtectedRoute>
                 <HomePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/documents"
+            element={
+              <ProtectedRoute>
+                <DocumentsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/editor/:id"
+            element={
+              <ProtectedRoute>
+                <EditorPage />
               </ProtectedRoute>
             }
           />
@@ -39,47 +72,7 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/docs"
-            element={
-              <ProtectedRoute>
-                <DocumentListPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/docs/new"
-            element={
-              <ProtectedRoute>
-                <DocumentEditPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/docs/:id"
-            element={
-              <ProtectedRoute>
-                <DocumentDetailPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/docs/:id/edit"
-            element={
-              <ProtectedRoute>
-                <DocumentEditPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/docs/:id/edit-content"
-            element={
-              <ProtectedRoute>
-                <DocumentEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

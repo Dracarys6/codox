@@ -128,7 +128,6 @@ void CollaborationController::getBootstrap(const HttpRequestPtr& req,
                 },
                 [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()));
-                    return;
                 },
                 docIdStr);
     });
@@ -226,21 +225,18 @@ void CollaborationController::handleSnapshot(const HttpRequestPtr& req,
                                         ResponseUtils::sendError(*callbackPtr,
                                                                  "Database error: " + std::string(e.base().what()),
                                                                  k500InternalServerError);
-                                        return;
                                     },
                                     std::to_string(versionId), std::to_string(docId));
                         },
                         [=](const drogon::orm::DrogonDbException& e) {
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
-                            return;
                         },
                         docIdStr, snapshotUrl, sha256, std::to_string(sizeBytes));
             },
             [=](const drogon::orm::DrogonDbException& e) {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                          k500InternalServerError);
-                return;
             },
             docIdStr, sha256);
 }

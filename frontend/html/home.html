@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codox - 多人在线文档协作平台</title>
+  <!-- 引入Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 引入Font Awesome -->
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  
+  <!-- 配置Tailwind自定义主题 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#3B82F6', // 主色调：蓝色
+            secondary: '#10B981', // 辅助色：绿色
+            danger: '#EF4444',    // 错误色：红色
+            warning: '#F59E0B',   // 警告色：黄色
+            dark: '#1E293B',
+            light: '#F8FAFC'
+          },
+          fontFamily: {
+            inter: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <!-- 自定义工具类 -->
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .bg-gradient-primary {
+        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+      }
+      .text-shadow {
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .card-hover {
+        transition: all 0.3s ease;
+      }
+      .card-hover:hover {
+        transform: translateY(-5px);
+      }
+    }
+  </style>
+</head>
+
+<body class="font-inter bg-gray-50 text-dark min-h-screen flex flex-col">
+  <!-- 导航栏 -->
+  <header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <!-- 左侧Logo和导航 -->
+        <div class="flex items-center">
+          <div class="flex-shrink-0 flex items-center">
+            <div class="bg-primary text-white p-1.5 rounded-lg">
+              <i class="fa fa-file-text-o text-xl"></i>
+            </div>
+            <span class="ml-2 text-xl font-bold">Codox</span>
+          </div>
+          <nav class="hidden md:ml-10 md:flex md:space-x-8">
+            <a href="#" class="text-primary border-primary inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+              首页
+            </a>
+            <a href="#documents" class="text-gray-500 hover:text-gray-700 hover:border-gray-300 inline-flex items-center px-1 pt-1 border-b-2 border-transparent text-sm font-medium">
+              我的文档
+            </a>
+          </nav>
+        </div>
+        
+        <!-- 右侧用户区域 -->
+        <div class="flex items-center">
+          <!-- 通知按钮 -->
+          <button type="button" class="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 mr-2 relative">
+            <i class="fa fa-bell-o"></i>
+            <span class="absolute top-1 right-1 block h-2 w-2 rounded-full bg-danger"></span>
+          </button>
+          
+          <!-- 搜索按钮 -->
+          <button type="button" class="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 mr-2">
+            <i class="fa fa-search"></i>
+          </button>
+          
+          <!-- 用户菜单 -->
+          <div class="ml-3 relative">
+            <div>
+              <button type="button" class="flex items-center max-w-xs rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2" id="user-menu-button">
+                <img class="h-8 w-8 rounded-full object-cover" src="https://picsum.photos/id/1005/200/200" alt="用户头像">
+                <span class="ml-2 hidden md:block">张小明</span>
+                <i class="fa fa-chevron-down ml-1 text-xs"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="flex-grow">
+    <!-- 欢迎区域 -->
+    <section class="bg-gradient-primary text-white py-12 md:py-20">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="md:w-3/5">
+          <h1 class="text-[clamp(1.8rem,4vw,3rem)] font-bold text-shadow mb-4">欢迎回来，张小明</h1>
+          <p class="text-white/90 text-lg md:text-xl mb-8 max-w-2xl">
+            继续您的文档创作之旅。上次您正在编辑的《产品规划方案》有3处新的评论和修改，等待您的查看。
+          </p>
+          <div class="flex flex-wrap gap-4">
+            <a href="#continue" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-primary bg-white hover:bg-gray-100 transition-colors">
+              继续编辑文档
+              <i class="fa fa-arrow-right ml-2"></i>
+            </a>
+            <a href="#new-document" class="inline-flex items-center px-6 py-3 border border-white/30 text-base font-medium rounded-lg shadow-sm bg-white/10 hover:bg-white/20 transition-colors">
+              <i class="fa fa-plus mr-2"></i>
+              创建新文档
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 状态检查提醒 -->
+    <section class="bg-warning/10 border-l-4 border-warning py-4 my-6">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex">
+          <div class="flex-shrink-0">
+            <i class="fa fa-exclamation-triangle text-warning text-xl"></i>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm text-warning-800">
+              <span class="font-medium">注意：</span> 您有2个文档超过30天未更新，可能需要检查内容时效性。
+              <a href="#old-docs" class="text-primary hover:underline ml-2">查看详情</a>
+            </p>
+          </div>
+          <div class="ml-auto pl-3">
+            <button type="button" class="text-warning-500 hover:text-warning-800">
+              <i class="fa fa-times"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+    
+    <!-- 功能导航与文档区域 -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <!-- 快速功能导航 -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        <div class="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100">
+          <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+            <i class="fa fa-file-text-o text-primary text-xl"></i>
+          </div>
+          <h3 class="font-medium text-gray-900">新建文档</h3>
+          <p class="text-sm text-gray-500 mt-1">从头开始创作</p>
+        </div>
+        
+        <div class="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100">
+          <div class="w-12 h-12 rounded-full bg-secondary/10 flex items-center justify-center mb-3">
+            <i class="fa fa-copy text-secondary text-xl"></i>
+          </div>
+          <h3 class="font-medium text-gray-900">从模板创建</h3>
+          <p class="text-sm text-gray-500 mt-1">使用专业模板</p>
+        </div>
+        
+        <div class="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100">
+          <div class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center mb-3">
+            <i class="fa fa-upload text-purple-600 text-xl"></i>
+          </div>
+          <h3 class="font-medium text-gray-900">上传文档</h3>
+          <p class="text-sm text-gray-500 mt-1">导入本地文件</p>
+        </div>
+        
+        <div class="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100">
+          <div class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mb-3">
+            <i class="fa fa-share-alt text-blue-600 text-xl"></i>
+          </div>
+          <h3 class="font-medium text-gray-900">共享文档</h3>
+          <p class="text-sm text-gray-500 mt-1">邀请协作者</p>
+        </div>
+      </div>
+      
+      <!-- 最近文档 -->
+      <div id="documents" class="mb-12">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold text-gray-900">最近文档</h2>
+          <a href="#all-docs" class="text-primary hover:text-primary/80 text-sm font-medium flex items-center">
+            查看全部
+            <i class="fa fa-angle-right ml-1"></i>
+          </a>
+        </div>
+        
+        <div class="bg-white shadow-sm rounded-xl overflow-hidden border border-gray-100">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">文档名称</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">最后编辑</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+              <tr id="continue" class="hover:bg-gray-50 transition-colors">
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="flex items-center">
+                    <div class="flex-shrink-0 h-9 w-9 bg-blue-100 rounded-md flex items-center justify-center text-primary">
+                      <i class="fa fa-file-text-o"></i>
+                    </div>
+                    <div class="ml-4">
+                      <div class="text-sm font-medium text-gray-900">产品规划方案</div>
+                      <div class="text-sm text-gray-500">营销部</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="text-sm text-gray-500">今天 14:30</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                    有新评论
+                  </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <a href="#" class="text-primary hover:text-primary/80 mr-4">编辑</a>
+                  <a href="#" class="text-gray-500 hover:text-gray-700">更多</a>
+                </td>
+              </tr>
+              
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="flex items-center">
+                    <div class="flex-shrink-0 h-9 w-9 bg-green-100 rounded-md flex items-center justify-center text-green-600">
+                      <i class="fa fa-file-text-o"></i>
+                    </div>
+                    <div class="ml-4">
+                      <div class="text-sm font-medium text-gray-900">季度工作总结</div>
+                      <div class="text-sm text-gray-500">个人文档</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="text-sm text-gray-500">昨天 09:15</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                    已保存
+                  </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <a href="#" class="text-primary hover:text-primary/80 mr-4">编辑</a>
+                  <a href="#" class="text-gray-500 hover:text-gray-700">更多</a>
+                </td>
+              </tr>
+              
+              <tr class="hover:bg-gray-50 transition-colors">
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="flex items-center">
+                    <div class="flex-shrink-0 h-9 w-9 bg-purple-100 rounded-md flex items-center justify-center text-purple-600">
+                      <i class="fa fa-file-text-o"></i>
+                    </div>
+                    <div class="ml-4">
+                      <div class="text-sm font-medium text-gray-900">用户调研报告</div>
+                      <div class="text-sm text-gray-500">产品部</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="text-sm text-gray-500">2023-06-18</div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                    协作中
+                  </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <a href="#" class="text-primary hover:text-primary/80 mr-4">编辑</a>
+                  <a href="#" class="text-gray-500 hover:text-gray-700">更多</a>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 简化版页脚 -->
+  <footer class="bg-white border-t border-gray-200 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-col md:flex-row justify-between items-center">
+        <div class="flex items-center mb-4 md:mb-0">
+          <div class="bg-primary text-white p-1 rounded-lg">
+            <i class="fa fa-file-text-o"></i>
+          </div>
+          <span class="ml-2 font-bold">Codox</span>
+          <p class="ml-4 text-sm text-gray-500">© 2023 保留所有权利</p>
+        </div>
+        <div class="flex space-x-6">
+          <a href="#" class="text-gray-400 hover:text-gray-500">
+            <i class="fa fa-twitter"></i>
+          </a>
+          <a href="#" class="text-gray-400 hover:text-gray-500">
+            <i class="fa fa-github"></i>
+          </a>
+          <a href="#" class="text-gray-400 hover:text-gray-500">
+            <i class="fa fa-weixin"></i>
+          </a>
+          <a href="#" class="text-gray-400 hover:text-gray-500">
+            <i class="fa fa-weibo"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- JavaScript -->
+  <script>
+    // 页面滚动效果
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        
+        const targetId = this.getAttribute('href');
+        if (targetId === '#') return;
+        
+        const targetElement = document.querySelector(targetId);
+        if (targetElement) {
+          window.scrollTo({
+            top: targetElement.offsetTop - 80,
+            behavior: 'smooth'
+          });
+        }
+      });
+    });
+    
+    // 通知标记点击清除效果
+    const notificationBtn = document.querySelector('button[p-2].relative');
+    if (notificationBtn) {
+      notificationBtn.addEventListener('click', function() {
+        const notificationDot = this.querySelector('.bg-danger');
+        if (notificationDot) {
+          notificationDot.remove();
+        }
+      });
+    }
+    
+    // 关闭状态提醒
+    const closeAlertBtn = document.querySelector('.bg-warning\\/10 button');
+    if (closeAlertBtn) {
+      closeAlertBtn.addEventListener('click', function() {
+        this.closest('.bg-warning\\/10').style.display = 'none';
+      });
+    }
+    
+    // 快速功能卡片点击效果
+    const quickActionCards = document.querySelectorAll('.card-hover');
+    quickActionCards.forEach(card => {
+      card.addEventListener('click', function() {
+        const actionName = this.querySelector('h3').textContent;
+        console.log(`执行: ${actionName}`);
+        
+        if (actionName === '新建文档') {
+          window.location.href = 'editor.html';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

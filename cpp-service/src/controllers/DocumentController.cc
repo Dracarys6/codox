@@ -626,7 +626,6 @@ void DocumentController::deleteDoc(const HttpRequestPtr &req, std::function<void
                 [=](const drogon::orm::DrogonDbException &e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
-                    return;
                 },
                 docIdStr, userIdStr);
     });
