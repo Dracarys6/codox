@@ -417,6 +417,6 @@ void CollaborationController::handleSnapshot(...) {
 ---
 
 **相关文档**：
-- [第三阶段开发指南](./第三阶段开发指南.md)
-- [详细设计文档](./详细设计.md)
+- [第三阶段开发指南](../PHASE-03-协作功能开发指南.md)
+- [详细设计文档](../ARCH-02-详细设计.md)
 

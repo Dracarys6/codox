@@ -269,27 +269,30 @@
   - [x] GET /api/docs/:id/versions（版本列表）
   - [x] POST /api/docs/:id/rollback/:versionId（版本回滚）
 
-### 📅 第三阶段（开发指南已完成）
+### ✅ 第三阶段（已完成）
 
-- [ ] 实时协作接入
-  - [ ] Yjs + WebSocket 集成
-  - [ ] POST /api/collab/token（协作令牌）
-  - [ ] POST /api/collab/snapshot/:docId（快照回调）
-  - [ ] GET /api/collab/bootstrap/:docId（引导快照）
-- [ ] 评论系统
-  - [ ] GET/POST /api/docs/:id/comments
-  - [ ] DELETE /api/comments/:id
-- [ ] 任务管理
-  - [ ] GET/POST /api/docs/:id/tasks
-  - [ ] PATCH /api/tasks/:id
-- [ ] 通知系统
-  - [ ] GET /api/notifications
-  - [ ] POST /api/notifications/read
-- [ ] 全文搜索
-  - [ ] GET /api/search
-  - [ ] Meilisearch 索引同步
+- [x] 实时协作接入
+  - [x] Yjs + WebSocket 集成
+  - [x] POST /api/collab/token（协作令牌）
+  - [x] POST /api/collab/snapshot/:docId（快照回调）
+  - [x] GET /api/collab/bootstrap/:docId（引导快照）
+- [x] 评论系统
+  - [x] GET/POST /api/comments
+  - [x] PUT /api/comments/:id
+  - [x] DELETE /api/comments/:id
+- [x] 任务管理
+  - [x] GET/POST /api/tasks
+  - [x] PUT /api/tasks/:id
+  - [x] PATCH /api/tasks/:id/status
+- [x] 通知系统
+  - [x] GET /api/notifications
+  - [x] POST /api/notifications/read
+- [x] 全文搜索
+  - [x] GET /api/search
+  - [x] Meilisearch 索引同步
+  - [x] 文档索引自动更新
 
-### 📅 第四阶段（未来规划）
+### 📅 第四阶段（当前开发）
 
 - [ ] 文档导入导出（Word/PDF/Markdown）
 - [ ] 文档模板系统
@@ -301,7 +304,11 @@
 
 ## 参考文档
 
-- [详细设计文档](./详细设计.md) - 详细的技术实现、API 设计、数据库模型
-- [第一阶段开发指南](./第一阶段开发指南.md) - 第一阶段开发指南
-- [第二阶段开发指南](./第二阶段开发指南.md) - 第二阶段开发指南
-- [第三阶段开发指南](./第三阶段开发指南.md) - 第三阶段开发指南（实时协作、评论、任务与搜索）
+- [详细设计文档](./ARCH-02-详细设计.md) - 详细的技术实现、API 设计、数据库模型
+- [需求文档](./REQ-01-需求文档.md) - 项目需求文档
+- [API 设计文档](./API-01-API设计.md) - API 设计文档
+- [第一阶段开发指南](./PHASE-01-用户认证开发指南.md) - 第一阶段开发指南（用户认证）
+- [第二阶段开发指南](./PHASE-02-文档管理开发指南.md) - 第二阶段开发指南（文档管理、权限、版本）
+- [第三阶段开发指南](./PHASE-03-协作功能开发指南.md) - 第三阶段开发指南（实时协作、评论、任务与搜索）✅
+- [第四阶段开发指南](./PHASE-04-导入导出开发指南.md) - 第四阶段开发指南（导入导出、模板、监控）📅
+- [项目启动指南](./GUIDE-01-项目启动指南.md) - 项目启动和运行指南

@@ -349,14 +349,16 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 ## 📚 文档
 
-- **[总体设计文档](./docs/总体设计.md)** - 系统架构、模块划分、开发路线图
-- **[详细设计文档](./docs/详细设计.md)** - 数据库设计、API 规格、代码结构、部署指南
-- **[第一阶段开发指南](./docs/第一阶段开发指南.md)** - 用户认证与基础功能
-- **[第二阶段开发指南](./docs/第二阶段开发指南.md)** - 文档 CRUD、权限管理与版本控制
-- **[第三阶段开发指南](./docs/第三阶段开发指南.md)** - 实时协作、评论、任务、通知、搜索
-- **[前后端开发同步策略](./docs/前后端开发同步策略.md)** - 前后端协作开发建议
-- **[开发提示与最佳实践](./docs/开发提示与最佳实践.md)**
-- **[后端 API 测试方法](./docs/后端API测试方法.md)**
+- **[总体设计文档](./docs/ARCH-01-总体设计.md)** - 系统架构、模块划分、开发路线图
+- **[详细设计文档](./docs/ARCH-02-详细设计.md)** - 数据库设计、API 规格、代码结构、部署指南
+- **[需求文档](./docs/REQ-01-需求文档.md)** - 项目需求文档
+- **[API 设计文档](./docs/API-01-API设计.md)** - API 设计文档
+- **[第一阶段开发指南](./docs/PHASE-01-用户认证开发指南.md)** - 用户认证与基础功能 ✅
+- **[第二阶段开发指南](./docs/PHASE-02-文档管理开发指南.md)** - 文档 CRUD、权限管理与版本控制 ✅
+- **[第三阶段开发指南](./docs/PHASE-03-协作功能开发指南.md)** - 实时协作、评论、任务、通知、搜索 ✅
+- **[第四阶段开发指南](./docs/PHASE-04-导入导出开发指南.md)** - 导入导出、模板系统、监控与日志 📅
+- **[项目启动指南](./docs/GUIDE-01-项目启动指南.md)** - 项目启动和运行指南
+- **[后端 API 测试方法](./docs/GUIDE-02-后端API测试方法.md)** - API 测试方法
 
 ## 🐛 常见问题
 
@@ -390,21 +392,31 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 - [x] JWT 令牌管理
 - [x] 密码加密实现
 
-### 🔄 第二阶段（进行中）
+### ✅ 第二阶段（已完成）
 
 - [x] 文档 CRUD 接口
 - [x] 文档权限管理（ACL & doc_acl 表）
 - [x] 文档版本管理
-- [ ] 用户资料管理（等待前端收尾）
+- [x] 用户资料管理
 
-### 📅 第三阶段（当前冲刺）
+### ✅ 第三阶段（已完成）
 
 - [x] 协作令牌 / 快照接口（`CollaborationController`）
 - [x] y-websocket 网关 & Tiptap 编辑器
-- [x] 评论 / 任务 / 通知 API（缺前端面板）
-- [ ] NotificationUtils 触发链路全面接入
-- [ ] Meilisearch Indexer & 搜索页
-- [ ] 评论 / 任务 / 搜索 UI
+- [x] 评论系统（`CommentController`）
+- [x] 任务管理（`TaskController`）
+- [x] 通知系统（`NotificationController`）
+- [x] 全文搜索（`SearchController` + Meilisearch 集成）
+- [x] 快照持久化到 MinIO
+- [x] 文档索引同步到 Meilisearch
+
+### 📅 第四阶段（当前开发）
+
+- [ ] 文档导入导出（Word/PDF/Markdown）
+- [ ] 文档模板系统
+- [ ] 移动端支持（PWA）
+- [ ] 监控与告警（Prometheus + Grafana）
+- [ ] 集中日志（Loki/ELK）
 
 ## 🤝 贡献
 
