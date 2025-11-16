@@ -42,7 +42,7 @@ void CommentController::getComments(const HttpRequestPtr& req,
         db->execSqlAsync(
                 "SELECT c.id, c.doc_id , c.author_id, c.anchor, c.content, c.parent_id, c.created_at,"
                 "u.email, up.nickname "
-                "FROM comment c"
+                "FROM comment c "
                 "LEFT JOIN \"user\" u ON c.author_id = u.id "
                 "LEFT JOIN user_profile up ON u.id = up.user_id "
                 "WHERE c.doc_id = $1 "
@@ -156,8 +156,8 @@ void CommentController::createComments(const HttpRequestPtr& req,
         if (parentId > 0) {
             // 回复评论
             db->execSqlAsync(
-                    "INSERT INTO comment (doc_id, author_id, anchor, content, parent_id)"
-                    "VALUES ($1, $2, $3::jsonb, $4, $5::integer)"
+                    "INSERT INTO comment (doc_id, author_id, anchor, content, parent_id) "
+                    "VALUES ($1, $2, $3::jsonb, $4, $5::integer) "
                     "RETURNING id, doc_id, author_id, anchor, content, parent_id, created_at",
                     [=](const drogon::orm::Result& r) {
                         if (r.empty()) {
@@ -188,8 +188,8 @@ void CommentController::createComments(const HttpRequestPtr& req,
         } else {
             // 新建评论
             db->execSqlAsync(
-                    "INSERT INTO comment (doc_id, author_id, anchor, content)"
-                    "VALUES ($1, $2, $3::jsonb, $4, )"
+                    "INSERT INTO comment (doc_id, author_id, anchor, content) "
+                    "VALUES ($1, $2, $3::jsonb, $4) "
                     "RETURNING id, doc_id, author_id, anchor, content, parent_id, created_at",
                     [=](const drogon::orm::Result& r) {
                         if (r.empty()) {
@@ -248,10 +248,10 @@ void CommentController::deleteComments(const HttpRequestPtr& req,
 
     auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     db->execSqlAsync(
-            "SELECT c.author_id, d.owner_id"
-            "FROM document c "
+            "SELECT c.author_id, d.owner_id "
+            "FROM comment c "
             "JOIN document d ON c.doc_id = d.id "
-            "WHERE c.id = $1::integer ",
+            "WHERE c.id = $1::integer",
             [=](const drogon::orm::Result& r) {
                 if (r.empty()) {
                     ResponseUtils::sendError(*callbackPtr, "Comment not found", k404NotFound);

@@ -1,10 +1,46 @@
 #include "CollaborationController.h"
 
 #include <json/json.h>
+#include <unistd.h>  // for access()
+
+#include <fstream>
+#include <sstream>
 
 #include "../utils/JwtUtil.h"
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
+
+// 辅助函数：从配置文件读取配置值（直接读取配置文件）
+static std::string getConfigValue(const std::string& key, const std::string& defaultValue = "") {
+    std::string configPath = "config.json";
+    if (access("config.json", F_OK) != 0) {
+        configPath = "../config.json";
+    }
+
+    try {
+        std::ifstream file(configPath);
+        if (file.is_open()) {
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            file.close();
+
+            Json::Value root;
+            Json::Reader reader;
+            if (reader.parse(buffer.str(), root)) {
+                if (root.isMember("app") && root["app"].isMember(key)) {
+                    return root["app"][key].asString();
+                }
+            }
+        }
+    } catch (...) {
+        // 忽略异常
+    }
+
+    return defaultValue;
+}
+
+// 辅助函数：从配置文件读取 webhook_token
+static std::string getWebhookTokenFromConfig() { return getConfigValue("webhook_token", ""); }
 
 void CollaborationController::getToken(const HttpRequestPtr& req,
                                        std::function<void(const HttpResponsePtr&)>&& callback) {
@@ -45,8 +81,7 @@ void CollaborationController::getToken(const HttpRequestPtr& req,
         payload["type"] = "collab";
 
         // 从配置获取 JWT secret
-        auto& appConfig = drogon::app().getCustomConfig();
-        std::string secret = appConfig.get("jwt_secret", "default-secret").asString();
+        std::string secret = getConfigValue("jwt_secret", "default-secret");
 
         std::string token = JwtUtil::generateToken(payload, secret, 3600);  // 1 小时
 
@@ -105,9 +140,9 @@ void CollaborationController::getBootstrap(const HttpRequestPtr& req,
         }
 
         db->execSqlAsync(
-                "SELECT dv.snapshot_url, dv.snapshot_sha256, dv.id as version_id"
-                "FROM document d"
-                "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id"
+                "SELECT dv.snapshot_url, dv.snapshot_sha256, dv.id as version_id "
+                "FROM document d "
+                "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id "
                 "WHERE d.id = $1",
                 [=](const drogon::orm::Result& r) {
                     if (r.empty() || r[0]["snapshot_url"].isNull()) {
@@ -137,9 +172,9 @@ void CollaborationController::handleSnapshot(const HttpRequestPtr& req,
                                              std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.验证 Webhook Token
     std::string webhookToken = req->getHeader("X-Webhook-Token");
-    std::string expectedToken = drogon::app().getCustomConfig()["webhook_token"].asString();
+    std::string expectedToken = getWebhookTokenFromConfig();
 
-    if (webhookToken != expectedToken) {
+    if (webhookToken.empty() || expectedToken.empty() || webhookToken != expectedToken) {
         ResponseUtils::sendError(callback, "Invalid webhook token", k401Unauthorized);
         return;
     }
@@ -151,9 +186,8 @@ void CollaborationController::handleSnapshot(const HttpRequestPtr& req,
         return;
     }
     std::string docIdStr = routingParams[0];
-    int docId;
     try {
-        docId = std::stoi(docIdStr);
+        std::stoi(docIdStr);
     } catch (...) {
         ResponseUtils::sendError(callback, "Invalid document ID", k400BadRequest);
         return;
@@ -197,42 +231,62 @@ void CollaborationController::handleSnapshot(const HttpRequestPtr& req,
                     return;
                 }
 
-                // 5.插入新版本记录 (created_by 从快照元数据获取,这里暂时用0)
+                // 5.插入新版本记录 (created_by 使用文档所有者)
+                // 先获取文档所有者
                 db->execSqlAsync(
-                        "INSERT INTO document_version (doc_id, snapshot_url, snapshot_sha256, size_bytes, created_by)"
-                        "VALUES ($1, $2, $3, $4::bigint, 0)"
-                        "RETURNING id",
-                        [=](const drogon::orm::Result& r) {
-                            if (r.empty()) {
-                                ResponseUtils::sendError(*callbackPtr, "Failed to create version",
-                                                         k500InternalServerError);
-                                return;
+                        "SELECT owner_id FROM document WHERE id = $1",
+                        [=](const drogon::orm::Result& docResult) {
+                            int ownerId = 1;  // 默认值
+                            if (!docResult.empty()) {
+                                ownerId = docResult[0]["owner_id"].as<int>();
                             }
 
-                            int versionId = r[0]["id"].as<int>();
-
-                            // 6.更新文档的 last_published_version_id
+                            // 插入新版本记录
                             db->execSqlAsync(
-                                    "UPDATE document SET last_published_version_id = $1::bigint, updated_at = NOW()"
-                                    "WHERE id = $2::intger",
+                                    "INSERT INTO document_version (doc_id, snapshot_url, snapshot_sha256, size_bytes, "
+                                    "created_by)"
+                                    "VALUES ($1, $2, $3, $4::bigint, $5::integer)"
+                                    "RETURNING id",
                                     [=](const drogon::orm::Result& r) {
-                                        Json::Value responseJson;
-                                        responseJson["version_id"] = versionId;
-                                        responseJson["message"] = "Snapshot saved successfully";
-                                        ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                                        if (r.empty()) {
+                                            ResponseUtils::sendError(*callbackPtr, "Failed to create version",
+                                                                     k500InternalServerError);
+                                            return;
+                                        }
+
+                                        int versionId = r[0]["id"].as<int>();
+
+                                        // 6.更新文档的 last_published_version_id
+                                        db->execSqlAsync(
+                                                "UPDATE document SET last_published_version_id = $1::bigint, "
+                                                "updated_at = NOW()"
+                                                "WHERE id = $2::integer",
+                                                [=](const drogon::orm::Result&) {
+                                                    Json::Value responseJson;
+                                                    responseJson["version_id"] = versionId;
+                                                    responseJson["message"] = "Snapshot saved successfully";
+                                                    ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                                                },
+                                                [=](const drogon::orm::DrogonDbException& e) {
+                                                    ResponseUtils::sendError(
+                                                            *callbackPtr,
+                                                            "Database error: " + std::string(e.base().what()),
+                                                            k500InternalServerError);
+                                                },
+                                                std::to_string(versionId), docIdStr);
                                     },
                                     [=](const drogon::orm::DrogonDbException& e) {
                                         ResponseUtils::sendError(*callbackPtr,
                                                                  "Database error: " + std::string(e.base().what()),
                                                                  k500InternalServerError);
                                     },
-                                    std::to_string(versionId), std::to_string(docId));
+                                    docIdStr, snapshotUrl, sha256, std::to_string(sizeBytes), std::to_string(ownerId));
                         },
                         [=](const drogon::orm::DrogonDbException& e) {
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
-                        docIdStr, snapshotUrl, sha256, std::to_string(sizeBytes));
+                        docIdStr);
             },
             [=](const drogon::orm::DrogonDbException& e) {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),

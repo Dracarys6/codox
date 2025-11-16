@@ -20,28 +20,10 @@ include_directories(${JSONCPP_INCLUDE_DIRS})
 link_directories(${JSONCPP_LIBRARY_DIRS})
 
 # 源码文件
-set(ALL_SOURCES
-    src/main.cpp
-    src/controllers/AuthController.h
-    src/controllers/AuthController.cc
-    src/controllers/HealthController.h
-    src/controllers/HealthController.cc
-    src/controllers/UserController.h
-    src/controllers/UserController.cc
-    src/controllers/DocumentController.h
-    src/controllers/DocumentController.cc
-    src/utils/JwtUtil.h
-    src/utils/JwtUtil.cc
-    src/utils/PasswordUtils.h
-    src/utils/PasswordUtils.cc
-    src/utils/DbUtils.h
-    src/utils/DbUtils.cc
-    src/utils/ResponseUtils.h
-    src/utils/ResponseUtils.cc
-    src/utils/PermissionUtils.h
-    src/utils/PermissionUtils.cc
-    src/middleware/JwtAuthFilter.h
-    src/middleware/JwtAuthFilter.cc
+file(GLOB_RECURSE ALL_SOURCES
+    "src/*.h"
+    "src/*.cc"
+    "src/*.cpp"
 )
 
 # 生成可执行文件

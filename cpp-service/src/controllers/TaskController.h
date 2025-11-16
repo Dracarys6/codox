@@ -10,8 +10,8 @@ public:
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(TaskController::getTasks, "/api/docs/{id}/tasks", Get, "JwtAuthFilter");
     ADD_METHOD_TO(TaskController::createTasks, "/api/docs/{id}/tasks", Post, "JwtAuthFilter");
-    ADD_METHOD_TO(TaskController::updateTasks, "/api/docs/{id}", Patch, "JwtAuthFilter");
-    ADD_METHOD_TO(TaskController::deleteTasks, "/api/docs/{id}", Delete, "JwtAuthFilter");
+    ADD_METHOD_TO(TaskController::updateTasks, "/api/tasks/{id}", Patch, "JwtAuthFilter");
+    ADD_METHOD_TO(TaskController::deleteTasks, "/api/tasks/{id}", Delete, "JwtAuthFilter");
     METHOD_LIST_END
 
     // 获取任务

@@ -98,7 +98,6 @@ void NotificationController::markAsRead(const HttpRequestPtr& req,
         ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
         return;
     }
-    int userId = std::stoi(userIdStr);
 
     // 2.解析请求体
     auto jsonPtr = req->jsonObject();
@@ -110,7 +109,7 @@ void NotificationController::markAsRead(const HttpRequestPtr& req,
 
     // 3.获取通知 ID 列表
     if (!json.isMember("notification_ids") || !json["notification_ids"].isArray()) {
-        ResponseUtils::sendError(callback, "notification_ids array is required", k400BadRequest);
+        ResponseUtils::sendError(callback, "Notification_ids array is required", k400BadRequest);
         return;
     }
 
@@ -176,7 +175,7 @@ void NotificationController::getUnreadCount(const HttpRequestPtr& req,
             "SELECT COUNT(*) as count FROM notification WHERE user_id = $1 AND is_read = FALSE",
             [=](const drogon::orm::Result& r) {
                 Json::Value responseJson;
-                responseJson["unread_count"] = r[0]['count'].as<int>();
+                responseJson["unread_count"] = r[0]["count"].as<int>();
                 ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
             },
             [=](const drogon::orm::DrogonDbException& e) {

@@ -9,7 +9,14 @@
         "jwt_secret": "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789ab+cdefgh=",
         "jwt_access_expires_in": 900,
         "jwt_refresh_expires_in": 2592000,
-        "threads_num": 4
+        "threads_num": 4,
+        "webhook_token": "7f9e2d4c-8b3a-41e0-9c6f-5d873a2b9c1e",
+        "meilisearch_url": "http://localhost:7700",
+        "meilisearch_master_key": "8a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d-7e8f9a0b1c2d3e4f5g6h7i8j9k0l",
+        "minio_endpoint": "localhost:9000",
+        "minio_access_key": "minioadmin",
+        "minio_secret_key": "minioadmin",
+        "minio_bucket": "documents"
     },
     "log": {
         "log_path": "./logs",

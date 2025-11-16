@@ -11,7 +11,7 @@ public:
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(CommentController::getComments, "/api/docs/{id}/comments", Get, "JwtAuthFilter");
     ADD_METHOD_TO(CommentController::createComments, "/api/docs/{id}/comments", Post, "JwtAuthFilter");
-    ADD_METHOD_TO(CommentController::deleteComments, "/api/docs/{id}", Delete, "JwtAuthFilter");
+    ADD_METHOD_TO(CommentController::deleteComments, "/api/comments/{id}", Delete, "JwtAuthFilter");
     METHOD_LIST_END
 
     // 获取评论

@@ -237,7 +237,6 @@ void TaskController::updateTasks(const HttpRequestPtr& req, std::function<void(c
                     return;
                 }
 
-                int docId = r[0]["doc_id"].as<int>();
                 int assigneeId = r[0]["assignee_id"].isNull() ? -1 : r[0]["assignee_id"].as<int>();
                 int createdBy = r[0]["created_by"].as<int>();
                 int ownerId = r[0]["owner_id"].as<int>();
