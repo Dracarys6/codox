@@ -1,20 +1,26 @@
-# MultiuserDocument
+# codox
 
-一个基于 C++/Drogon 和 PostgreSQL 的多人在线协作文档编辑系统后端服务。
+一个由 C++/Drogon、Node.js y-websocket 与 React/Vite 前端协同打造的多人在线协作文档系统，内部代号 **Codox**。
 
 ## 📋 项目简介
 
-MultiuserDocument 是一个支持多人实时协作的文档编辑系统，提供用户认证、权限管理、文档 CRUD 等功能。系统采用 C++ 高性能后端框架 Drogon，结合 PostgreSQL 数据库，为前端应用提供稳定的 API 服务。
+当前仓库涵盖：
 
-### 核心功能
+- `cpp-service`：Drogon + PostgreSQL 的主业务 API（文codox档、权限、评论、任务、通知、搜索网关等）
+- `collab-service`：Yjs WebSocket 网关，负责实时协作数据通道
+- `frontend`：Tiptap 编辑器 + React 前端，接入实时协作、评论与任务面板
+- `docs`：逐阶段的设计 / 验收指南（第三阶段主打实时协作与协同工具）
 
-- ✅ **用户认证系统**：注册、登录、JWT Token 刷新
-- ✅ **密码安全**：SHA-256 哈希加密，随机盐值
-- ✅ **数据库连接**：PostgreSQL 连接池管理
-- ✅ **健康检查**：服务状态和数据库连接监控
-- 🔄 **文档管理**：开发中
-- 🔄 **实时协作**：计划中（Yjs + WebSocket）
-- 🔄 **权限管理**：计划中（RBAC + ACL）
+第三阶段的工作重点是把「文档协作 + 沟通 + 搜索」串成一体。当前 master 已经具备后端 API、协作服务和基础的 Tiptap 多人编辑能力，其余体验仍在打磨中。
+
+### 核心功能&进度
+
+- ✅ **认证与安全**：注册 / 登录 / Token 刷新、SHA-256+Salt、JwtAuthFilter
+- ✅ **文档 & 权限**：文档 CRUD、版本、ACL（第二阶段主线）
+- ✅ **实时协作基础**：协作令牌、快照回调、DocumentEditor + collab-service （Beta）
+- 🟡 **评论 / 任务 / 通知 API**：后端接口已就绪，等待前端整合
+- 🟡 **全文搜索**：Meilisearch 接入层已预置，待前端结果页
+- ⏳ **多端体验**：评论、任务、搜索的前端 UI 正在收尾
 
 ## 🛠️ 技术栈
 
@@ -32,21 +38,28 @@ MultiuserDocument/
 ├── cpp-service/           # C++ 后端服务
 │   ├── src/
 │   │   ├── controllers/   # API 控制器
-│   │   │   ├── AuthController.h/cc    # 认证相关 API
-│   │   │   └── HealthController.h/cc  # 健康检查
-│   │   ├── utils/         # 工具类
-│   │   │   ├── JwtUtil.h/cc           # JWT 工具
-│   │   │   ├── PasswordUtils.h/cc     # 密码加密工具
-│   │   │   └── DbUtils.h/cc           # 数据库工具
+│   │   │   ├── AuthController.*       # 认证
+│   │   │   ├── DocumentController.*   # 文档、ACL、版本
+│   │   │   ├── CollaborationController.* # 协作令牌 & 快照
+│   │   │   ├── Comment|Task|NotificationController.* # 第三阶段接口
+│   │   │   └── SearchController.*     # 全文检索代理
+│   │   ├── utils/         # 工具类（JwtUtil、PermissionUtils、NotificationUtils...）
 │   │   └── main.cpp       # 程序入口
 │   ├── sql/               # SQL 脚本
 │   │   └── init.sql       # 数据库初始化脚本
 │   ├── config.json        # 服务配置文件
 │   └── CMakeLists.txt     # CMake 配置
+├── collab-service/        # y-websocket 网关 (Node.js + TypeScript)
+│   ├── server.ts
+│   └── tsconfig.json
+├── frontend/              # React + Tiptap 前端
+│   ├── src/components/DocumentEditor.tsx
+│   ├── src/api/client.ts  # 与 cpp-service 协作
+│   └── ...
 ├── docs/                  # 项目文档
+│   ├── 第三阶段开发指南.md
+│   ├── 第一/二阶段指南.md
 │   ├── 总体设计.md
-│   ├── 详细设计.md
-│   ├── AuthController开发指南.md
 │   └── ...
 └── README.md
 ```
@@ -59,6 +72,7 @@ MultiuserDocument/
 - CMake 3.14+
 - C++17 编译器（GCC 7+ / Clang 5+）
 - PostgreSQL 12+
+- Node.js 18+（运行 `collab-service` 与 `frontend`）
 
 ### 1. 安装依赖
 
@@ -143,6 +157,43 @@ make -j$(nproc)
 ```
 
 服务默认运行在 `http://localhost:8080`
+
+### 5. 启动协作 WebSocket 服务
+
+```bash
+cd collab-service
+npm install
+npm run dev   # 或 npx tsx server.ts
+```
+
+> 默认监听 `ws://localhost:1234`，可通过 `server.ts`/容器参数修改；前端通过 `VITE_WS_URL` 读取。
+
+### 6. 启动支撑服务（Meilisearch & MinIO）
+
+```bash
+# 在项目根目录
+docker compose up -d meilisearch minio
+```
+
+- Meilisearch 控制台：`http://localhost:7700`（Master Key 见 `cpp-service/config.json`）
+- MinIO 控制台：`http://localhost:9001`（默认 `minioadmin:minioadmin`）
+
+### 7. 启动前端
+
+```bash
+cd frontend
+npm install
+npm run dev  # 默认 http://localhost:5173
+```
+
+将 `.env.example`（若存在）复制为 `.env.local`，至少配置：
+
+```
+VITE_API_BASE_URL=http://localhost:8080/api
+VITE_WS_URL=ws://localhost:1234
+```
+
+至此即可在浏览器中完成「鉴权 → 文档 → 协作编辑」的闭环测试。
 
 ## 📡 API 端点
 
@@ -284,6 +335,10 @@ curl -X POST http://localhost:8080/api/auth/refresh \
   - `rdbms`：数据库类型（postgresql）
   - `connection_number`：连接池大小
   - `is_fast`：是否使用快速客户端（当前版本建议为 false）
+- **jwt_secret**：供 Auth/Collaboration/JwtAuthFilter 共用的密钥
+- **webhook_token**：快照回调所需的 `X-Webhook-Token`
+- **meilisearch_url / meilisearch_master_key**：全文搜索服务地址与密钥
+- **minio_* 系列**：快照/附件默认落地到 MinIO，对应 endpoint / access_key / secret_key / bucket
 
 ## 🔒 安全特性
 
@@ -296,11 +351,12 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 - **[总体设计文档](./docs/总体设计.md)** - 系统架构、模块划分、开发路线图
 - **[详细设计文档](./docs/详细设计.md)** - 数据库设计、API 规格、代码结构、部署指南
-- [第一阶段开发指南](./docs/第一阶段开发指南.md) - 用户认证与基础功能
+- **[第一阶段开发指南](./docs/第一阶段开发指南.md)** - 用户认证与基础功能
 - **[第二阶段开发指南](./docs/第二阶段开发指南.md)** - 文档 CRUD、权限管理与版本控制
-- [前后端开发同步策略](./docs/前后端开发同步策略.md) - 前后端协作开发建议
-- [开发提示与最佳实践](./docs/开发提示与最佳实践.md)
-- [后端 API 测试方法](./docs/后端API测试方法.md)
+- **[第三阶段开发指南](./docs/第三阶段开发指南.md)** - 实时协作、评论、任务、通知、搜索
+- **[前后端开发同步策略](./docs/前后端开发同步策略.md)** - 前后端协作开发建议
+- **[开发提示与最佳实践](./docs/开发提示与最佳实践.md)**
+- **[后端 API 测试方法](./docs/后端API测试方法.md)**
 
 ## 🐛 常见问题
 
@@ -336,18 +392,19 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 ### 🔄 第二阶段（进行中）
 
-- [ ] 文档 CRUD 接口
-- [ ] 文档权限管理（ACL）
-- [ ] 用户资料管理
-- [ ] 文档版本管理
+- [x] 文档 CRUD 接口
+- [x] 文档权限管理（ACL & doc_acl 表）
+- [x] 文档版本管理
+- [ ] 用户资料管理（等待前端收尾）
 
-### 📅 第三阶段（计划中）
+### 📅 第三阶段（当前冲刺）
 
-- [ ] 实时协作接入（Yjs + WebSocket）
-- [ ] 评论系统
-- [ ] 任务管理
-- [ ] 通知系统
-- [ ] 全文搜索
+- [x] 协作令牌 / 快照接口（`CollaborationController`）
+- [x] y-websocket 网关 & Tiptap 编辑器
+- [x] 评论 / 任务 / 通知 API（缺前端面板）
+- [ ] NotificationUtils 触发链路全面接入
+- [ ] Meilisearch Indexer & 搜索页
+- [ ] 评论 / 任务 / 搜索 UI
 
 ## 🤝 贡献
 
@@ -359,7 +416,7 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 ## 👥 作者
 
-[待补充]
+- dracarys
 
 ---
 

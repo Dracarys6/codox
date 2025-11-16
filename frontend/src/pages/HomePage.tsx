@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import { Document } from '../types';
+import { NotificationBell } from '../components/NotificationBell';
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
@@ -51,6 +52,20 @@ export function HomePage() {
     }
   };
 
+  const handleDeleteDocument = async (docId: number, docTitle: string) => {
+    if (!window.confirm(`确定要删除文档"${docTitle}"吗？此操作无法撤销。`)) {
+      return;
+    }
+
+    try {
+      await apiClient.deleteDocument(docId);
+      // 重新加载文档列表
+      loadDocuments();
+    } catch (error: any) {
+      alert(error.response?.data?.error || '删除文档失败，请稍后重试');
+    }
+  };
+
   const formatDate = (value: string) =>
     new Intl.DateTimeFormat('zh-CN', {
       dateStyle: 'medium',
@@ -89,20 +104,15 @@ export function HomePage() {
             </div>
 
             <div className="flex items-center">
-              <button
-                type="button"
-                className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 mr-2 relative"
-              >
-                <i className="fa fa-bell-o"></i>
-                <span className="absolute top-1 right-1 block h-2 w-2 rounded-full bg-danger"></span>
-              </button>
-
-              <button
-                type="button"
+              <Link
+                to="/search"
                 className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 mr-2"
+                title="搜索"
               >
                 <i className="fa fa-search"></i>
-              </button>
+              </Link>
+
+              <NotificationBell />
 
               <div className="ml-3 relative">
                 <Link
@@ -333,7 +343,13 @@ export function HomePage() {
                           >
                             编辑
                           </Link>
-                          <button className="text-gray-500 hover:text-gray-700">更多</button>
+                          <button
+                            onClick={() => handleDeleteDocument(doc.id, doc.title)}
+                            className="text-danger hover:text-danger/80 transition-custom"
+                            title="删除文档"
+                          >
+                            <i className="fa fa-trash-o mr-1"></i>删除
+                          </button>
                         </td>
                       </tr>
                     ))}

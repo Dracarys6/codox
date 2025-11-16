@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import { Document, DocumentListParams } from '../types';
+import { NotificationBell } from '../components/NotificationBell';
 
 export function DocumentsPage() {
   const { user } = useAuth();
@@ -181,8 +182,18 @@ export function DocumentsPage() {
 
             <div className="flex items-center">
               <Link
+                to="/search"
+                className="p-2 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 mr-2"
+                title="搜索"
+              >
+                <i className="fa fa-search"></i>
+              </Link>
+
+              <NotificationBell />
+
+              <Link
                 to="/profile"
-                className="flex items-center max-w-xs rounded-full text-sm"
+                className="flex items-center max-w-xs rounded-full text-sm ml-2"
               >
                 <img
                   className="h-8 w-8 rounded-full object-cover"

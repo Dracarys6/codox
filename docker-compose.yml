@@ -1,16 +1,47 @@
+version: '3.3'
+
 services:
-  # ... 其他服务 ...
+  # PostgreSQL 服务（如果本地已有 PostgreSQL，可以注释掉此服务）
+  # postgres:
+  #   image: postgres:14
+  #   container_name: codox-postgres
+  #   environment:
+  #     POSTGRES_DB: collab
+  #     POSTGRES_USER: collab
+  #     POSTGRES_PASSWORD: 20050430
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #     - ./cpp-service/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "pg_isready -U collab" ]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - codox-network
+
   meilisearch:
     image: getmeili/meilisearch:latest
+    container_name: codox-meilisearch
     ports:
       - "7700:7700"
     volumes:
       - meili_data:/meili_data
     environment:
-      - MEILI_MASTER_KEY=your_master_key_here
-  
+      - MEILI_MASTER_KEY=8a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d-7e8f9a0b1c2d3e4f5g6h7i8j9k0l
+    healthcheck:
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:7700/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - codox-network
+
   minio:
     image: minio/minio:latest
+    container_name: codox-minio
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -20,7 +51,22 @@ services:
       - MINIO_ROOT_USER=minioadmin
       - MINIO_ROOT_PASSWORD=minioadmin
     command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    networks:
+      - codox-network
 
 volumes:
+  postgres_data:
+    driver: local
   meili_data:
+    driver: local
   minio_data:
+    driver: local
+
+networks:
+  codox-network:
+    driver: bridge

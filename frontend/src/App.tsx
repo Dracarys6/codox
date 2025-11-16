@@ -6,6 +6,7 @@ import { HomePage } from './pages/HomePage';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { EditorPage } from './pages/EditorPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { SearchPage } from './pages/SearchPage';
 import './index.css';
 
 // 受保护的路由组件
@@ -69,6 +70,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/search"
+            element={
+              <ProtectedRoute>
+                <SearchPage />
               </ProtectedRoute>
             }
           />

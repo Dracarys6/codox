@@ -41,7 +41,7 @@ description: 记录 DocSync 当前已实现的后端接口与规划中的未来�
 ### 评论
 - `GET /api/docs/{id}/comments` — 已在控制器中实现，返回指定文档的评论列表。
 - `POST /api/docs/{id}/comments` — 控制器骨架已存在，后续需补全内容校验、入库逻辑。
-- `DELETE /api/comments/{id}` — 控制器路由尚未完善（当前指向 `/api/docs/{id}`），需按设计修正。
+- `DELETE /api/comments/{id}` — 删除评论，需要评论id `comment_id`
 
 > ⚠️ 注意：评论模块的新增/删除实现仍有 TODO，使用前请补全控制器内逻辑。
 

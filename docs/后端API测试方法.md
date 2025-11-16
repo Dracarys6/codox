@@ -1,147 +1,5 @@
 # 后端 API 测试方法指南
 
-本文档介绍如何使用各种工具测试后端 API，包括发送 GET/POST 请求、调试技巧等。
-
-## 使用 curl 测试
-
-`curl` 是最常用的命令行 HTTP 客户端，几乎所有 Linux/Unix 系统都预装了它。
-
-### 基本语法
-
-```bash
-curl [选项] <URL>
-```
-
-### 常用选项
-
-| 选项 | 说明 |
-|------|------|
-| `-X <METHOD>` | 指定 HTTP 方法（GET, POST, PUT, PATCH, DELETE） |
-| `-H "Header: Value"` | 添加 HTTP 头部 |
-| `-d 'data'` | 发送 POST 数据（表单格式） |
-| `-d @file.json` | 从文件读取 POST 数据 |
-| `--data-raw 'json'` | 发送原始 JSON 数据 |
-| `-v` | 详细输出（显示请求和响应头） |
-| `-i` | 显示响应头 |
-| `-s` | 静默模式（不显示进度） |
-| `-o file` | 将输出保存到文件 |
-
-### GET 请求示例
-
-```bash
-# 基本 GET 请求
-curl http://localhost:8080/health
-
-# 格式化 JSON 输出（需要 jq 或 python）
-curl -s http://localhost:8080/health | python3 -m json.tool
-curl -s http://localhost:8080/health | jq
-
-# 带认证头的 GET 请求
-curl -X GET http://localhost:8080/api/users/me \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-
-# 显示详细信息
-curl -v http://localhost:8080/health
-```
-
-### POST 请求示例
-
-```bash
-# POST JSON 数据
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"account":"test@example.com","password":"test12345"}'
-
-# 从文件读取 JSON 数据
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d @login.json
-
-# 格式化输出
-curl -s -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"account":"test@example.com","password":"test12345"}' \
-  | python3 -m json.tool
-```
-
-### PATCH 请求示例
-
-```bash
-# PATCH 请求更新用户信息
-curl -X PATCH http://localhost:8080/api/users/me \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"nickname":"新昵称","bio":"个人简介"}'
-```
-
-### 保存和使用 Token
-
-```bash
-# 登录并保存 token
-TOKEN=$(curl -s -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"account":"test@example.com","password":"test12345"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
-
-echo "Token: $TOKEN"
-
-# 使用保存的 token
-curl -X GET http://localhost:8080/api/users/me \
-  -H "Authorization: Bearer $TOKEN" \
-  | python3 -m json.tool
-```
-
-### 完整测试流程示例
-
-```bash
-#!/bin/bash
-
-# 1. 健康检查
-echo "=== 1. 健康检查 ==="
-curl -s http://localhost:8080/health | python3 -m json.tool
-
-# 2. 用户注册
-echo -e "\n=== 2. 用户注册 ==="
-curl -s -X POST http://localhost:8080/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"newuser@example.com","password":"password123"}' \
-  | python3 -m json.tool
-
-# 3. 用户登录
-echo -e "\n=== 3. 用户登录 ==="
-LOGIN_RESPONSE=$(curl -s -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"account":"test@example.com","password":"test12345"}')
-
-echo "$LOGIN_RESPONSE" | python3 -m json.tool
-
-# 提取 token
-TOKEN=$(echo "$LOGIN_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
-echo "Token: ${TOKEN:0:50}..."
-
-# 4. 获取用户信息
-echo -e "\n=== 4. 获取用户信息 ==="
-curl -s -X GET http://localhost:8080/api/users/me \
-  -H "Authorization: Bearer $TOKEN" \
-  | python3 -m json.tool
-
-# 5. 更新用户信息
-echo -e "\n=== 5. 更新用户信息 ==="
-curl -s -X PATCH http://localhost:8080/api/users/me \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"nickname":"测试昵称","bio":"这是个人简介"}' \
-  | python3 -m json.tool
-
-# 6. 验证更新
-echo -e "\n=== 6. 验证更新 ==="
-curl -s -X GET http://localhost:8080/api/users/me \
-  -H "Authorization: Bearer $TOKEN" \
-  | python3 -m json.tool
-```
-
----
-
 ## 使用 HTTPie 测试
 
 HTTPie 是一个更友好的命令行 HTTP 客户端，语法更简洁。
@@ -230,68 +88,125 @@ http PATCH http://localhost:8080/api/users/me \
 3. 可以设置环境变量（Environment）
 4. 可以批量运行所有请求
 
----
 
-## API 端点测试清单
 
-### 认证相关
+## 第三阶段 API（协作/评论/任务/通知/搜索）测试指南
 
-- [ ] `GET /health` - 健康检查
-- [ ] `POST /api/auth/register` - 用户注册
-- [ ] `POST /api/auth/login` - 用户登录
-- [ ] `POST /api/auth/refresh` - 刷新 Token
+> 以下示例统一使用 HTTPie，默认后端运行在 `http://localhost:8080`，测试账号为 `test@example.com / test12345`。执行命令前建议 `cd` 到仓库根目录。
 
-### 用户相关
-
-- [ ] `GET /api/users/me` - 获取当前用户信息（需要认证）
-- [ ] `PATCH /api/users/me` - 更新当前用户信息（需要认证）
-
-### 测试命令模板
+### 第一步：登录并保存 Token
 
 ```bash
-# 设置变量
-BASE_URL="http://localhost:8080"
-TOKEN="your_token_here"
-
-# 健康检查
-curl -s "$BASE_URL/health" | python3 -m json.tool
-
 # 登录
-curl -s -X POST "$BASE_URL/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d '{"account":"test@example.com","password":"test12345"}' \
-  | python3 -m json.tool
+http --ignore-stdin POST :localhost:8080/api/auth/login \
+  account=test@example.com password=test12345
 
-# 需要认证的请求
-curl -s -X GET "$BASE_URL/api/users/me" \
-  -H "Authorization: Bearer $TOKEN" \
-  | python3 -m json.tool
+# 将 access_token/export 为环境变量
+export ACCESS_TOKEN="粘贴上一步返回的 access_token"
 ```
 
+> 说明：HTTPie 在使用 `key=value` 语法时需要带上 `--ignore-stdin`，否则若命令位于脚本或管道后会报 “Request body and request data cannot be mixed”。
+
+### 协作接口
+
+```bash
+# 获取协作令牌
+http --ignore-stdin POST :8080/api/collab/token \
+  Authorization:"Bearer $ACCESS_TOKEN" doc_id:=12
+
+# 获取引导快照
+http --ignore-stdin GET :8080/api/collab/bootstrap/12 \
+  Authorization:"Bearer $ACCESS_TOKEN"
+
+# 模拟快照回调（需正确 X-Webhook-Token）
+http --ignore-stdin POST :8080/api/collab/snapshot/12 \
+  X-Webhook-Token:7f9e2d4c-8b3a-41e0-9c6f-5d873a2b9c1e \
+  snapshot_url=http://example.com/snapshot \
+  sha256=dummy-hash \
+  size_bytes:=123
+```
+
+建议同时测试以下异常场景：缺少 `doc_id`、`Authorization`、使用无权限用户、错误的 `X-Webhook-Token`、重复 `sha256`（幂等返回）。
+
+### 评论接口
+
+```bash
+# 列出评论
+http --ignore-stdin GET :8080/api/docs/12/comments \
+  Authorization:"Bearer $ACCESS_TOKEN"
+
+# 创建评论
+http --ignore-stdin POST :8080/api/docs/12/comments \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  content='这是一条评论'
+
+# 删除评论
+http --ignore-stdin DELETE :8080/api/comments/123 \
+  Authorization:"Bearer $ACCESS_TOKEN"
+```
+
+重点验证：内容为空、`parent_id` 非法、无权限删除时的 400/403 响应，并在数据库检查 `comment`、`notification` 表是否同步更新。
+
+### 任务接口
+
+```bash
+# 获取任务列表
+http --ignore-stdin GET :8080/api/docs/12/tasks \
+  Authorization:"Bearer $ACCESS_TOKEN"
+
+# 创建任务（需要 editor 权限）
+http --ignore-stdin POST :8080/api/docs/12/tasks \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  title='编写测试用例' assignee_id:=1
+
+# 更新任务状态
+http --ignore-stdin PATCH :8080/api/tasks/456 \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  status=doing
+
+# 删除任务
+http --ignore-stdin DELETE :8080/api/tasks/456 \
+  Authorization:"Bearer $ACCESS_TOKEN"
+```
+
+需补充：缺少 title、assignee、非法 status 以及非创建者/文档所有者操作时的拒绝行为，同时确认任务相关通知写入 `notification`。
+
+### 通知接口
+
+```bash
+# 拉取通知列表
+http --ignore-stdin GET :8080/api/notifications \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  page==1 page_size==20 unread_only==false
+
+# 批量标记为已读
+http --ignore-stdin POST :8080/api/notifications/read \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  notification_ids:='[1,2]'
+
+# 未读数量
+http --ignore-stdin GET :8080/api/notifications/unread-count \
+  Authorization:"Bearer $ACCESS_TOKEN"
+```
+
+重点覆盖：空数组、包含其他用户通知 ID、`unread_only` 过滤等情形。
+
+### 搜索接口（若已开放）
+
+```bash
+# 文档搜索
+http --ignore-stdin GET :8080/api/search \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  q=='协作' page==1 page_size==20
+```
+
+应验证：缺少 `q` 返回 400、返回结果仅包含当前用户有权限的文档，以及不同权限用户的可见性差异。
+
+### WebSocket / 协作链路
+
+1. 使用 `wscat`/`websocat` 连接协作服务：  
+   `wscat -c "ws://localhost:1234?docId=12&token=<getToken返回的token>"`
+2. 同时在两个窗口输入内容，确认 Yjs 同步正常。  
+3. 断网或关闭其中一个连接，观察 `DocumentEditor` 是否触发快照并通过 `/api/collab/snapshot/{id}` 回调。
+
 ---
-
-## 总结
-
-### 推荐工具选择
-
-- **快速测试：** curl
-- **日常使用：** HTTPie（语法更友好）
-- **复杂场景：** Postman（图形界面，支持集合和环境变量）
-- **自动化测试：** Python requests 库
-
-### 最佳实践
-
-1. **保存 Token**：使用环境变量或脚本变量保存 token
-2. **格式化输出**：使用 `python3 -m json.tool` 或 `jq` 格式化 JSON
-3. **查看日志**：遇到问题时查看服务日志
-4. **测试错误场景**：测试各种错误情况，确保错误处理正确
-5. **创建测试脚本**：将常用测试命令保存为脚本，方便重复使用
-
----
-
-## 参考资料
-
-- [curl 官方文档](https://curl.se/docs/)
-- [HTTPie 文档](https://httpie.io/docs)
-- [Postman 文档](https://learning.postman.com/)
-- [Python requests 文档](https://docs.python-requests.org/)

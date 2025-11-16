@@ -286,6 +286,106 @@ class ApiClient {
         return response.data;
     }
 
+    // ========== 评论相关 API ==========
+
+    /**
+     * 获取文档评论列表
+     */
+    async getComments(docId: number): Promise<{ comments: any[] }> {
+        const response = await this.client.get<{ comments: any[] }>(`/docs/${docId}/comments`);
+        return response.data;
+    }
+
+    /**
+     * 创建评论
+     */
+    async createComment(docId: number, data: { content: string; anchor?: any; parent_id?: number }): Promise<any> {
+        const response = await this.client.post<any>(`/docs/${docId}/comments`, data);
+        return response.data;
+    }
+
+    /**
+     * 删除评论
+     */
+    async deleteComment(commentId: number): Promise<{ message: string }> {
+        const response = await this.client.delete<{ message: string }>(`/comments/${commentId}`);
+        return response.data;
+    }
+
+    // ========== 任务相关 API ==========
+
+    /**
+     * 获取文档任务列表
+     */
+    async getTasks(docId: number): Promise<{ tasks: any[] }> {
+        const response = await this.client.get<{ tasks: any[] }>(`/docs/${docId}/tasks`);
+        return response.data;
+    }
+
+    /**
+     * 创建任务
+     */
+    async createTask(docId: number, data: { title: string; assignee_id?: number; due_at?: string }): Promise<any> {
+        const response = await this.client.post<any>(`/docs/${docId}/tasks`, data);
+        return response.data;
+    }
+
+    /**
+     * 更新任务
+     */
+    async updateTask(taskId: number, data: { status?: string; title?: string; assignee_id?: number; due_at?: string }): Promise<any> {
+        const response = await this.client.patch<any>(`/tasks/${taskId}`, data);
+        return response.data;
+    }
+
+    /**
+     * 删除任务
+     */
+    async deleteTask(taskId: number): Promise<{ message: string }> {
+        const response = await this.client.delete<{ message: string }>(`/tasks/${taskId}`);
+        return response.data;
+    }
+
+    // ========== 通知相关 API ==========
+
+    /**
+     * 获取通知列表
+     */
+    async getNotifications(params?: { page?: number; page_size?: number; unread_only?: boolean }): Promise<{ notifications: any[]; total: number }> {
+        const response = await this.client.get<{ notifications: any[]; total: number }>('/notifications', { params });
+        return response.data;
+    }
+
+    /**
+     * 标记通知为已读
+     */
+    async markNotificationsAsRead(notificationIds: number[]): Promise<{ message: string }> {
+        const response = await this.client.post<{ message: string }>('/notifications/read', {
+            notification_ids: notificationIds,
+        });
+        return response.data;
+    }
+
+    /**
+     * 获取未读通知数量
+     */
+    async getUnreadNotificationCount(): Promise<{ unread_count: number }> {
+        const response = await this.client.get<{ unread_count: number }>('/notifications/unread-count');
+        return response.data;
+    }
+
+    // ========== 搜索相关 API ==========
+
+    /**
+     * 搜索文档
+     */
+    async searchDocuments(query: string, params?: { page?: number; page_size?: number }): Promise<{ hits: any[]; total: number }> {
+        const response = await this.client.get<{ hits: any[]; total: number }>('/search', {
+            params: { q: query, ...params },
+        });
+        return response.data;
+    }
+
     // ========== 工具方法 ==========
 
     /**
