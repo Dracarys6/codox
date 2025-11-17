@@ -13,5 +13,6 @@ public:
     ADD_METHOD_TO(HealthController::health, "/health", Get);
     METHOD_LIST_END
 
+    // 检查健康状态
     void health(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 };

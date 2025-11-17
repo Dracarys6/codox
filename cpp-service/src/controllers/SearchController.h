@@ -11,5 +11,6 @@ public:
     ADD_METHOD_TO(SearchController::search, "/api/search", Get, "JwtAuthFilter");
     METHOD_LIST_END
 
+    // 搜索
     void search(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 };

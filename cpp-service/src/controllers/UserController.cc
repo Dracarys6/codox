@@ -86,9 +86,9 @@ void UserController::updateMe(const HttpRequestPtr& req, std::function<void(cons
     }
 
     Json::Value json = *jsonPtr;
-    std::string nickname = json.get("nickname", "").asString();
-    std::string bio = json.get("bio", "").asString();
-    std::string avatarUrl = json.get("avatar_url", "").asString();
+    std::string nickname = json["nickname"].asString();
+    std::string bio = json["bio"].asString();
+    std::string avatarUrl = json["avatar_url"].asString();
 
     // 3.输入验证
     if (nickname.length() > 64) {

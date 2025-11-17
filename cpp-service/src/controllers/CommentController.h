@@ -16,8 +16,10 @@ public:
 
     // 获取评论
     void getComments(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
     // 创建评论
     void createComments(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
     // 删除评论
     void deleteComments(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 };

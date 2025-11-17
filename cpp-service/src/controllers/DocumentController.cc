@@ -5,11 +5,17 @@
 
 #include <memory>
 #include <numeric>
+#include <sstream>
 #include <vector>
 
 #include "../utils/DbUtils.h"
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
+
+static void queryDocumentWithTags(const drogon::orm::DbClientPtr &db, int docId,
+                                  std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr);
+static void queryAclAndRespond(const drogon::orm::DbClientPtr &db, int docId, int ownerId,
+                               std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr);
 
 // 辅助函数：构建文档响应
 static void buildDocumentResponse(const drogon::orm::Result &r,
@@ -40,6 +46,97 @@ static void buildDocumentResponse(const drogon::orm::Result &r,
     ResponseUtils::sendSuccess(*callbackPtr, responseJson);
 }
 
+// 辅助函数:处理标签更新
+static void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, const Json::Value &json,
+                             const drogon::orm::Result &docResult,
+                             std::shared_ptr<std::function<void(const drogon::HttpResponsePtr &)>> callbackPtr) {
+    // 没有标签更新,直接查询文档（包括标签）并返回
+    if (!json.isMember("tags")) {
+        queryDocumentWithTags(db, docId, callbackPtr);
+        return;
+    }
+
+    std::string docIdStr = std::to_string(docId);
+
+    // 删除旧标签关联
+    db->execSqlAsync(
+            "DELETE FROM doc_tag WHERE doc_id = $1::integer",
+            [=](const drogon::orm::Result &r) {
+                Json::Value tagsJson = json["tags"];
+                if (!tagsJson.isArray() || tagsJson.size() == 0) {
+                    // 没有新标签,查询文档（包括标签）并返回
+                    queryDocumentWithTags(db, docId, callbackPtr);
+                    return;
+                }
+
+                // 处理新标签,逐个插入
+                // 使用shared_ptr确保所有lambda共享同一个状态
+                struct TagUpdaterState {
+                    drogon::orm::DbClientPtr db;
+                    int docId;
+                    Json::Value tagsJson;
+                    std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr;
+                    int index = 0;
+                };
+
+                auto state = std::make_shared<TagUpdaterState>(TagUpdaterState{db, docId, tagsJson, callbackPtr});
+
+                // 定义递归处理函数（使用shared_ptr包装function以支持递归）
+                auto processNext = std::make_shared<std::function<void()>>();
+                *processNext = [=]() mutable {
+                    if (state->index >= int(state->tagsJson.size())) {
+                        // 所有标签处理完成,查询文档（包括标签）并返回响应
+                        queryDocumentWithTags(state->db, state->docId, state->callbackPtr);
+                        return;
+                    }
+                    std::string tagName = state->tagsJson[state->index].asString();
+                    state->index++;
+
+                    // 查找或创建标签
+                    state->db->execSqlAsync(
+                            "INSERT INTO tag (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = $1 "
+                            "RETURNING id, name",
+                            [=](const drogon::orm::Result &tagResult) mutable {
+                                if (!tagResult.empty()) {
+                                    int tagId = tagResult[0]["id"].as<int>();
+
+                                    // 关联文档和标签
+                                    state->db->execSqlAsync(
+                                            "INSERT INTO doc_tag (doc_id, tag_id) VALUES ($1::integer, "
+                                            "$2::integer) ON CONFLICT DO NOTHING",
+                                            [=](const drogon::orm::Result &r) mutable { (*processNext)(); },
+                                            [=](const drogon::orm::DrogonDbException &e) {
+                                                ResponseUtils::sendError(
+                                                        *(state->callbackPtr),
+                                                        "Database error: " + std::string(e.base().what()),
+                                                        k500InternalServerError);
+                                                return;
+                                            },
+                                            std::to_string(state->docId), std::to_string(tagId));
+                                } else {
+                                    (*processNext)();
+                                }
+                            },
+                            [=](const drogon::orm::DrogonDbException &e) {
+                                ResponseUtils::sendError(*(state->callbackPtr),
+                                                         "Database error: " + std::string(e.base().what()),
+                                                         k500InternalServerError);
+                                return;
+                            },
+                            tagName);
+                };
+
+                // 开始处理
+                (*processNext)();
+            },
+            [=](const drogon::orm::DrogonDbException &e) {
+                ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                         k500InternalServerError);
+                return;
+            },
+            docIdStr);
+}
+
 // 辅助函数：查询文档（包括标签）并返回响应
 static void queryDocumentWithTags(const drogon::orm::DbClientPtr &db, int docId,
                                   std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr) {
@@ -60,6 +157,85 @@ static void queryDocumentWithTags(const drogon::orm::DbClientPtr &db, int docId,
                     return;
                 }
                 buildDocumentResponse(r, callbackPtr);
+            },
+            [=](const drogon::orm::DrogonDbException &e) {
+                ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                         k500InternalServerError);
+            },
+            docIdStr);
+}
+
+// 辅助函数：查询 ACL 列表并返回统一响应
+static void queryAclAndRespond(const drogon::orm::DbClientPtr &db, int docId, int ownerId,
+                               std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr) {
+    if (!db) {
+        ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+        return;
+    }
+    std::string docIdStr = std::to_string(docId);
+    std::string ownerIdStr = std::to_string(ownerId);
+
+    db->execSqlAsync(
+            "SELECT da.user_id, da.permission, u.email, up.nickname "
+            "FROM doc_acl da "
+            "INNER JOIN \"user\" u ON da.user_id = u.id "
+            "LEFT JOIN user_profile up ON u.id = up.user_id "
+            "WHERE da.doc_id = $1::bigint "
+            "ORDER BY da.user_id",
+            [=](const drogon::orm::Result &aclResult) {
+                Json::Value aclArray(Json::arrayValue);
+                bool ownerIncluded = false;
+
+                for (const auto &row : aclResult) {
+                    Json::Value aclItem;
+                    int aclUserId = row["user_id"].as<int>();
+                    aclItem["user_id"] = aclUserId;
+                    aclItem["permission"] = row["permission"].as<std::string>();
+                    aclItem["email"] = row["email"].as<std::string>();
+                    if (!row["nickname"].isNull()) {
+                        aclItem["nickname"] = row["nickname"].as<std::string>();
+                    }
+                    if (aclUserId == ownerId && aclItem["permission"].asString() == "owner") {
+                        ownerIncluded = true;
+                    }
+                    aclArray.append(aclItem);
+                }
+
+                auto sendSuccessResponse = [callbackPtr, docId](const Json::Value &finalAcl) {
+                    Json::Value responseJson;
+                    responseJson["doc_id"] = docId;
+                    responseJson["acl"] = finalAcl;
+                    ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                };
+
+                if (ownerIncluded) {
+                    sendSuccessResponse(aclArray);
+                    return;
+                }
+
+                // 如果结果中缺少 owner 记录（理论上不应该发生），补充一条
+                db->execSqlAsync(
+                        "SELECT u.email, up.nickname FROM \"user\" u "
+                        "LEFT JOIN user_profile up ON u.id = up.user_id "
+                        "WHERE u.id = $1::bigint",
+                        [=](const drogon::orm::Result &ownerResult) mutable {
+                            Json::Value ownerItem;
+                            ownerItem["user_id"] = ownerId;
+                            ownerItem["permission"] = "owner";
+                            if (!ownerResult.empty()) {
+                                ownerItem["email"] = ownerResult[0]["email"].as<std::string>();
+                                if (!ownerResult[0]["nickname"].isNull()) {
+                                    ownerItem["nickname"] = ownerResult[0]["nickname"].as<std::string>();
+                                }
+                            }
+                            aclArray.append(ownerItem);
+                            sendSuccessResponse(aclArray);
+                        },
+                        [=](const drogon::orm::DrogonDbException &e) {
+                            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                                     k500InternalServerError);
+                        },
+                        ownerIdStr);
             },
             [=](const drogon::orm::DrogonDbException &e) {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
@@ -90,7 +266,7 @@ void DocumentController::create(const HttpRequestPtr &req, std::function<void(co
         return;
     }
     Json::Value json = *jsonPtr;
-    std::string title = json.get("title", "").asString();
+    std::string title = json["title"].asString();
 
     // 3.验证标题
     if (title.empty()) {
@@ -144,16 +320,14 @@ void DocumentController::create(const HttpRequestPtr &req, std::function<void(co
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
-                        docIdStr, userIdStr);  // 直接使用字符串
+                        docIdStr, userIdStr);
             },
             [=](const drogon::orm::DrogonDbException &e) mutable {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                          k500InternalServerError);
             },
-            userIdStr, title);  // 直接使用 userIdStr
+            userIdStr, title);
 }
-
-// 标签后续通过更新接口添加
 
 void DocumentController::list(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
     // 1.获取user_id
@@ -165,23 +339,17 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
     // 2.解析查询参数
     int page = 1;
     int pageSize = 20;
-
+    std::string pageStr = req->getParameter("page");
+    std::string pageSizeStr = req->getParameter("pageSize");
     try {
-        std::string pageStr = req->getParameter("page");
         if (!pageStr.empty()) page = std::max(1, std::stoi(pageStr));
     } catch (...) {
     }
-
     try {
-        std::string pageSizeStr = req->getParameter("pageSize");
         if (!pageSizeStr.empty()) pageSize = std::min(100, std::max(1, std::stoi(pageSizeStr)));
     } catch (...) {
     }
-
     int offset = (page - 1) * pageSize;
-
-    // 预先转换为字符串，避免在 lambda 中重复转换
-    std::string pageSizeStr = std::to_string(pageSize);
     std::string offsetStr = std::to_string(offset);
 
     // 3.查询文档
@@ -470,96 +638,6 @@ void DocumentController::update(const drogon::HttpRequestPtr &req,
     });
 }
 
-void DocumentController::handleUpdateTags(
-        const drogon::orm::DbClientPtr &db, int docId, const Json::Value &json, const drogon::orm::Result &docResult,
-        std::shared_ptr<std::function<void(const drogon::HttpResponsePtr &)>> callbackPtr) {
-    // 没有标签更新,直接查询文档（包括标签）并返回
-    if (!json.isMember("tags")) {
-        queryDocumentWithTags(db, docId, callbackPtr);
-        return;
-    }
-
-    std::string docIdStr = std::to_string(docId);
-
-    // 删除旧标签关联
-    db->execSqlAsync(
-            "DELETE FROM doc_tag WHERE doc_id = $1::integer",
-            [=](const drogon::orm::Result &r) {
-                Json::Value tagsJson = json["tags"];
-                if (!tagsJson.isArray() || tagsJson.size() == 0) {
-                    // 没有新标签,查询文档（包括标签）并返回
-                    queryDocumentWithTags(db, docId, callbackPtr);
-                    return;
-                }
-
-                // 处理新标签,逐个插入
-                // 使用shared_ptr确保所有lambda共享同一个状态
-                struct TagUpdaterState {
-                    drogon::orm::DbClientPtr db;
-                    int docId;
-                    Json::Value tagsJson;
-                    std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr;
-                    int index = 0;
-                };
-
-                auto state = std::make_shared<TagUpdaterState>(TagUpdaterState{db, docId, tagsJson, callbackPtr});
-
-                // 定义递归处理函数（使用shared_ptr包装function以支持递归）
-                auto processNext = std::make_shared<std::function<void()>>();
-                *processNext = [=]() mutable {
-                    if (state->index >= int(state->tagsJson.size())) {
-                        // 所有标签处理完成,查询文档（包括标签）并返回响应
-                        queryDocumentWithTags(state->db, state->docId, state->callbackPtr);
-                        return;
-                    }
-                    std::string tagName = state->tagsJson[state->index].asString();
-                    state->index++;
-
-                    // 查找或创建标签
-                    state->db->execSqlAsync(
-                            "INSERT INTO tag (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = $1 "
-                            "RETURNING id, name",
-                            [=](const drogon::orm::Result &tagResult) mutable {
-                                if (!tagResult.empty()) {
-                                    int tagId = tagResult[0]["id"].as<int>();
-
-                                    // 关联文档和标签
-                                    state->db->execSqlAsync(
-                                            "INSERT INTO doc_tag (doc_id, tag_id) VALUES ($1::integer, "
-                                            "$2::integer) ON CONFLICT DO NOTHING",
-                                            [=](const drogon::orm::Result &r) mutable { (*processNext)(); },
-                                            [=](const drogon::orm::DrogonDbException &e) {
-                                                ResponseUtils::sendError(
-                                                        *(state->callbackPtr),
-                                                        "Database error: " + std::string(e.base().what()),
-                                                        k500InternalServerError);
-                                                return;
-                                            },
-                                            std::to_string(state->docId), std::to_string(tagId));
-                                } else {
-                                    (*processNext)();
-                                }
-                            },
-                            [=](const drogon::orm::DrogonDbException &e) {
-                                ResponseUtils::sendError(*(state->callbackPtr),
-                                                         "Database error: " + std::string(e.base().what()),
-                                                         k500InternalServerError);
-                                return;
-                            },
-                            tagName);
-                };
-
-                // 开始处理
-                (*processNext)();
-            },
-            [=](const drogon::orm::DrogonDbException &e) {
-                ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
-                                         k500InternalServerError);
-                return;
-            },
-            docIdStr);
-}
-
 void DocumentController::deleteDoc(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
     // 1.获取路径参数 {id}
     std::vector<std::string> routingParams = req->getRoutingParameters();
@@ -628,5 +706,193 @@ void DocumentController::deleteDoc(const HttpRequestPtr &req, std::function<void
                                              k500InternalServerError);
                 },
                 docIdStr, userIdStr);
+    });
+}
+
+void DocumentController::getAcl(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+    // 1.获取路径参数 doc_id
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    int docId;
+    try {
+        docId = std::stoi(routingParams[0]);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID", k400BadRequest);
+        return;
+    }
+
+    // 2.获取user_id
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    auto db = drogon::app().getDbClient();
+    if (!db) {
+        ResponseUtils::sendError(callback, "Database not available", k500InternalServerError);
+        return;
+    }
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+
+    // 3.验证用户是文档owner
+    PermissionUtils::hasPermission(docId, userId, "owner", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Only document owner can view ACL", k403Forbidden);
+            return;
+        }
+        queryAclAndRespond(db, docId, userId, callbackPtr);
+    });
+}
+
+void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+    // 1.获取 doc_id
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    int docId;
+    try {
+        docId = std::stoi(routingParams[0]);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID", k400BadRequest);
+        return;
+    }
+    std::string docIdStr = std::to_string(docId);
+
+    // 2.获取 user_id
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 3.解析请求体
+    auto jsonPtr = req->jsonObject();
+    if (!jsonPtr) {
+        ResponseUtils::sendError(callback, "Invalid JSON", k400BadRequest);
+        return;
+    }
+    Json::Value json = *jsonPtr;
+    if (!json.isMember("acl") || !json["acl"].isArray()) {
+        ResponseUtils::sendError(callback, "acl array is required", k400BadRequest);
+        return;
+    }
+
+    auto db = drogon::app().getDbClient();
+    if (!db) {
+        ResponseUtils::sendError(callback, "Database not available", k500InternalServerError);
+        return;
+    }
+
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+
+    // 4.验证当前用户是 owner
+    PermissionUtils::hasPermission(docId, userId, "owner", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Only document owner can update ACL", k403Forbidden);
+            return;
+        }
+
+        Json::Value aclArray = json["acl"];
+        std::vector<std::pair<int, std::string>> aclItems;
+        aclItems.reserve(aclArray.size());
+
+        for (const auto &item : aclArray) {
+            if (!item.isMember("user_id") || !item.isMember("permission")) {
+                ResponseUtils::sendError(*callbackPtr, "Invalid ACL item: user_id and permission are required",
+                                         k400BadRequest);
+                return;
+            }
+            int aclUserId;
+            try {
+                aclUserId = item["user_id"].asInt();
+            } catch (...) {
+                ResponseUtils::sendError(*callbackPtr, "Invalid user_id in ACL item", k400BadRequest);
+                return;
+            }
+            if (aclUserId == userId) {
+                ResponseUtils::sendError(*callbackPtr, "Owner permission cannot be modified", k400BadRequest);
+                return;
+            }
+            std::string permission = item["permission"].asString();
+            if (permission != "viewer" && permission != "editor") {
+                ResponseUtils::sendError(*callbackPtr, "Invalid permission: must be 'viewer' or 'editor'",
+                                         k400BadRequest);
+                return;
+            }
+            aclItems.emplace_back(aclUserId, permission);
+        }
+
+        auto errorHandler = [=](const drogon::orm::DrogonDbException &e) {
+            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                     k500InternalServerError);
+        };
+
+        auto fetchAcl = [=]() { queryAclAndRespond(db, docId, userId, callbackPtr); };
+
+        // 删除旧的 ACL（保留 owner）
+        db->execSqlAsync(
+                "DELETE FROM doc_acl WHERE doc_id = $1::bigint AND permission != 'owner'",
+                [=](const drogon::orm::Result &) {
+                    if (aclItems.empty()) {
+                        fetchAcl();
+                        return;
+                    }
+
+                    auto buildIntArray = [](const std::vector<std::pair<int, std::string>> &items) {
+                        std::ostringstream oss;
+                        oss << "{";
+                        for (size_t i = 0; i < items.size(); ++i) {
+                            if (i > 0) {
+                                oss << ",";
+                            }
+                            oss << items[i].first;
+                        }
+                        oss << "}";
+                        return oss.str();
+                    };
+
+                    auto buildTextArray = [](const std::vector<std::pair<int, std::string>> &items) {
+                        std::ostringstream oss;
+                        oss << "{";
+                        for (size_t i = 0; i < items.size(); ++i) {
+                            if (i > 0) {
+                                oss << ",";
+                            }
+                            oss << "\"" << items[i].second << "\"";
+                        }
+                        oss << "}";
+                        return oss.str();
+                    };
+
+                    std::string userIdArray = buildIntArray(aclItems);
+                    std::string permissionArray = buildTextArray(aclItems);
+
+                    db->execSqlAsync(
+                            "INSERT INTO doc_acl (doc_id, user_id, permission) "
+                            "SELECT $1::bigint, unnest($2::bigint[]), unnest($3::varchar[])",
+                            [=](const drogon::orm::Result &) { fetchAcl(); }, errorHandler, docIdStr, userIdArray,
+                            permissionArray);
+                },
+                errorHandler, docIdStr);
     });
 }

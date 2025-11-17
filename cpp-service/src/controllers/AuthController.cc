@@ -21,9 +21,9 @@ void AuthController::registerHandler(const HttpRequestPtr& req,
         return;
     }
     Json::Value json = *jsonPtr;
-    std::string email = json.get("email", "").asString();
-    std::string password = json.get("password", "").asString();
-    std::string nickname = json.get("nickname", "").asString();
+    std::string email = json["email"].asString();
+    std::string password = json["password"].asString();
+    std::string nickname = json["nickname"].asString();
 
     // 2.验证输入
     if (email.empty() || password.empty()) {
@@ -123,8 +123,8 @@ void AuthController::loginHandler(const HttpRequestPtr& req, std::function<void(
     }
 
     Json::Value json = *jsonPtr;
-    std::string account = json.get("account", "").asString();  // email 或 phone
-    std::string password = json.get("password", "").asString();
+    std::string account = json["account"].asString();  // email 或 phone
+    std::string password = json["password"].asString();
 
     if (account.empty() || password.empty()) {
         ResponseUtils::sendError(callback, "Account and password are required", k400BadRequest);
@@ -202,7 +202,7 @@ void AuthController::refreshHandler(const HttpRequestPtr& req, std::function<voi
     }
 
     Json::Value json = *jsonPtr;
-    std::string refreshToken = json.get("refresh_token", "").asString();
+    std::string refreshToken = json["refresh_token"].asString();
 
     if (refreshToken.empty()) {
         ResponseUtils::sendError(callback, "Refresh token is required", k400BadRequest);

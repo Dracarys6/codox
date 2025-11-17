@@ -210,3 +210,137 @@ http --ignore-stdin GET :8080/api/search \
 3. 断网或关闭其中一个连接，观察 `DocumentEditor` 是否触发快照并通过 `/api/collab/snapshot/{id}` 回调。
 
 ---
+
+## 第四阶段 API（实时通讯）测试指南
+
+> 实时通讯模块提供聊天室和消息功能，支持直接聊天、群组聊天和文档关联聊天。
+
+### 聊天室接口
+
+```bash
+# 创建聊天室（群组）
+http --ignore-stdin POST :8080/api/chat/rooms \
+  Authorization:"Bearer $TOKEN" \
+  user_id:=1 \
+  name='项目讨论组' \
+  type=group \
+  member_ids:='[2,3]'
+
+# 创建聊天室（直接聊天）
+http --ignore-stdin POST :8080/api/chat/rooms \
+  Authorization:"Bearer $TOKEN" \
+  user_id:=1 \
+  name='' \
+  type=direct \
+  member_ids:='[2]'
+
+# 创建聊天室（文档关联）
+http --ignore-stdin POST :8080/api/chat/rooms \
+  Authorization:"Bearer $TOKEN" \
+  user_id:=1 \
+  name='文档讨论' \
+  type=document \
+  doc_id:=12 \
+  member_ids:='[2,3]'
+
+# 获取用户聊天室列表
+http --ignore-stdin GET :8080/api/chat/rooms \
+  Authorization:"Bearer $TOKEN" \
+  user_id:=1 \
+  page==1 \
+  page_size==20
+
+# 添加成员到聊天室
+http --ignore-stdin POST :8080/api/chat/rooms/1/members \
+  Authorization:"Bearer $TOKEN" \
+  user_id:=1 \
+  user_ids:='[4,5]'
+```
+
+**测试要点**：
+- 验证 `type` 必须为 `direct`、`group` 或 `document`
+- 文档聊天室需要文档 owner 权限
+- 直接聊天室 `member_ids` 只能包含一个成员
+- 非聊天室成员无法添加其他成员
+
+### 消息接口
+
+```bash
+# 发送文本消息
+http --ignore-stdin POST :8080/api/chat/rooms/1/messages \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=1 \
+  content='这是一条测试消息' \
+  message_type=text
+
+# 发送文件消息
+http --ignore-stdin POST :8080/api/chat/rooms/1/messages \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=1 \
+  message_type=file \
+  file_url='https://example.com/file.pdf'
+
+# 回复消息
+http --ignore-stdin POST :8080/api/chat/rooms/1/messages \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=1 \
+  content='这是回复' \
+  reply_to:=123
+
+# 获取消息历史（分页）
+http --ignore-stdin GET :8080/api/chat/rooms/1/messages \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=1 \
+  page==1 \
+  page_size==50
+
+# 获取消息历史（游标分页）
+http --ignore-stdin GET :8080/api/chat/rooms/1/messages \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=1 \
+  before_id==456 \
+  page_size==50
+
+# 标记消息为已读
+http --ignore-stdin POST :8080/api/chat/messages/123/read \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=1
+```
+
+**测试要点**：
+- 验证消息必须包含 `content` 或 `file_url` 至少一个
+- 非聊天室成员无法发送消息或获取消息历史
+- 验证分页参数（`page`、`page_size`、`before_id`）的正确性
+- 验证 `message_type` 的有效值（`text`、`file`、`image` 等）
+- 验证 `reply_to` 引用的消息是否存在
+- 标记已读后检查 `chat_message_read` 表和 `chat_room_member.last_read_at` 是否更新
+
+### 异常场景测试
+
+```bash
+# 测试无效的聊天室类型
+http --ignore-stdin POST :8080/api/chat/rooms \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=1 \
+  type=invalid
+
+# 测试无权限创建文档聊天室
+http --ignore-stdin POST :8080/api/chat/rooms \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=2 \
+  type=document \
+  doc_id:=12
+
+# 测试非成员发送消息
+http --ignore-stdin POST :8080/api/chat/rooms/1/messages \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=999 \
+  content='测试'
+
+# 测试空消息内容
+http --ignore-stdin POST :8080/api/chat/rooms/1/messages \
+  Authorization:"Bearer $ACCESS_TOKEN" \
+  user_id:=1
+```
+
+---

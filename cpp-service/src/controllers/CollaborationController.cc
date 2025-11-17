@@ -113,7 +113,7 @@ void CollaborationController::getBootstrap(const HttpRequestPtr& req,
     // 2.获取user_id
     std::string userIdStr = req->getParameter("user_id");
     if (userIdStr.empty()) {
-        ResponseUtils::sendError(callback, "User Id not found", k401Unauthorized);
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
         return;
     }  // 验证 userId 是否为有效数字
     int userId;

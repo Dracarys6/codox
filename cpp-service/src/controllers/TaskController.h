@@ -16,12 +16,16 @@ public:
 
     // 获取任务
     void getTasks(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
     // 创建任务
     void createTasks(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
     // 更新任务
     void updateTasks(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
     // 删除任务
     void deleteTasks(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
     // 辅助函数：构建任务响应
     static void buildTaskResponse(const drogon::orm::Result& r,
                                   std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr);

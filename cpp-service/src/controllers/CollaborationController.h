@@ -16,8 +16,10 @@ public:
 
     // 协作令牌生成接口
     void getToken(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
     // 引导快照接口
     void getBootstrap(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
     // 快照回调接口
     void handleSnapshot(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 };

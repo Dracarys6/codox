@@ -16,6 +16,7 @@ public:
 
     // 获取当前用户信息(需要认证)
     void getMe(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
     // 更新当前用户信息(需要认证)
     void updateMe(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 };
