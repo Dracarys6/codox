@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Codox - 多人在线文档协作平台</title>
+  <!-- 引入Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 引入Font Awesome -->
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  
+  <!-- 配置Tailwind自定义主题 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#3B82F6',
+            secondary: '#10B981',
+            danger: '#EF4444',
+            warning: '#F59E0B',
+            dark: '#1E293B',
+            light: '#F8FAFC'
+          },
+          fontFamily: {
+            inter: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <!-- 自定义工具类 -->
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .bg-gradient-primary {
+        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+      }
+      .text-shadow {
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      }
+      .transition-custom {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+    }
+  </style>
+  
+  <style>
+    @keyframes float {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+      100% { transform: translateY(0px); }
+    }
+    
+    .animate-float {
+      animation: float 6s ease-in-out infinite;
+    }
+    
+    .animate-float-delay-1 {
+      animation: float 6s ease-in-out 1s infinite;
+    }
+    
+    .animate-float-delay-2 {
+      animation: float 6s ease-in-out 2s infinite;
+    }
+  </style>
+</head>
+
+<body class="font-inter bg-gray-50 text-dark min-h-screen flex flex-col">
+  <!-- 导航栏 -->
+  <header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between h-16">
+        <!-- 左侧Logo -->
+        <div class="flex items-center">
+          <div class="flex-shrink-0 flex items-center">
+            <div class="bg-primary text-white p-1.5 rounded-lg">
+              <i class="fa fa-file-text-o text-xl"></i>
+            </div>
+            <span class="ml-2 text-xl font-bold">Codox</span>
+          </div>
+        </div>
+        
+        <!-- 右侧操作 -->
+        <div class="flex items-center gap-4">
+          <a href="login.html" class="text-gray-700 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-gray-100 transition-custom">
+            登录
+          </a>
+          <a href="register.html" class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-custom shadow-lg shadow-primary/20">
+            免费注册
+          </a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="flex-grow">
+    <!-- Hero区域 -->
+    <section class="bg-gradient-primary text-white py-20 md:py-32 relative overflow-hidden">
+      <!-- 装饰图形 -->
+      <div class="absolute -top-20 -left-20 w-64 h-64 bg-white/10 rounded-full blur-3xl"></div>
+      <div class="absolute top-1/3 -right-20 w-40 h-40 bg-white/10 rounded-full blur-3xl animate-float"></div>
+      <div class="absolute bottom-20 left-1/4 w-32 h-32 bg-white/10 rounded-full blur-3xl animate-float-delay-1"></div>
+      
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div class="text-center">
+          <h1 class="text-4xl md:text-6xl font-bold text-shadow mb-6">
+            多人在线文档协作平台
+          </h1>
+          <p class="text-xl md:text-2xl text-white/90 mb-8 max-w-3xl mx-auto">
+            实时协作、版本控制、云端同步，让团队协作更高效
+          </p>
+          <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="register.html" class="inline-flex items-center justify-center px-8 py-4 bg-white text-primary rounded-lg font-medium hover:bg-gray-100 transition-custom shadow-lg text-lg">
+              立即开始
+              <i class="fa fa-arrow-right ml-2"></i>
+            </a>
+            <a href="home.html" class="inline-flex items-center justify-center px-8 py-4 border-2 border-white/30 text-white rounded-lg font-medium hover:bg-white/10 transition-custom text-lg">
+              查看演示
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 功能特性 -->
+    <section class="py-20">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-16">
+          <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">强大的协作功能</h2>
+          <p class="text-xl text-gray-500 max-w-2xl mx-auto">
+            专为团队协作设计，提升工作效率
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div class="bg-white rounded-xl shadow-sm p-8 border border-gray-100 text-center">
+            <div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i class="fa fa-users text-primary text-2xl"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">实时多人协作</h3>
+            <p class="text-gray-500">多人同时编辑同一文档，所有更改实时同步，无需等待</p>
+          </div>
+
+          <div class="bg-white rounded-xl shadow-sm p-8 border border-gray-100 text-center">
+            <div class="w-16 h-16 bg-secondary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i class="fa fa-history text-secondary text-2xl"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">完整版本历史</h3>
+            <p class="text-gray-500">追踪所有修改记录，随时回溯到任意版本，永不丢失</p>
+          </div>
+
+          <div class="bg-white rounded-xl shadow-sm p-8 border border-gray-100 text-center">
+            <div class="w-16 h-16 bg-warning/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <i class="fa fa-cloud text-warning text-2xl"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">云端自动保存</h3>
+            <p class="text-gray-500">所有内容自动保存至云端，随时随地访问您的文档</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA区域 -->
+    <section class="bg-gray-100 py-16">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <h2 class="text-3xl font-bold text-gray-900 mb-4">准备开始了吗？</h2>
+        <p class="text-xl text-gray-500 mb-8">立即注册，免费体验所有功能</p>
+        <a href="register.html" class="inline-flex items-center justify-center px-8 py-4 bg-primary text-white rounded-lg font-medium hover:bg-primary/90 transition-custom shadow-lg shadow-primary/20 text-lg">
+          免费注册
+          <i class="fa fa-arrow-right ml-2"></i>
+        </a>
+      </div>
+    </section>
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="bg-white border-t border-gray-200 py-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+        <div>
+          <div class="flex items-center mb-4">
+            <div class="bg-primary text-white p-1.5 rounded-lg">
+              <i class="fa fa-file-text-o text-xl"></i>
+            </div>
+            <span class="ml-2 text-xl font-bold">Codox</span>
+          </div>
+          <p class="text-gray-500 text-sm">多人在线文档协作平台，让团队协作更高效</p>
+        </div>
+        
+        <div>
+          <h3 class="font-semibold text-gray-900 mb-4">产品</h3>
+          <ul class="space-y-2 text-sm text-gray-500">
+            <li><a href="#" class="hover:text-primary transition-custom">功能特性</a></li>
+            <li><a href="#" class="hover:text-primary transition-custom">定价</a></li>
+            <li><a href="#" class="hover:text-primary transition-custom">更新日志</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h3 class="font-semibold text-gray-900 mb-4">支持</h3>
+          <ul class="space-y-2 text-sm text-gray-500">
+            <li><a href="#" class="hover:text-primary transition-custom">帮助中心</a></li>
+            <li><a href="#" class="hover:text-primary transition-custom">联系我们</a></li>
+            <li><a href="#" class="hover:text-primary transition-custom">API文档</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h3 class="font-semibold text-gray-900 mb-4">法律</h3>
+          <ul class="space-y-2 text-sm text-gray-500">
+            <li><a href="#" class="hover:text-primary transition-custom">隐私政策</a></li>
+            <li><a href="#" class="hover:text-primary transition-custom">服务条款</a></li>
+            <li><a href="#" class="hover:text-primary transition-custom">Cookie政策</a></li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="border-t border-gray-200 pt-8 flex flex-col md:flex-row justify-between items-center">
+        <p class="text-sm text-gray-500 mb-4 md:mb-0">© 2023 Codox. 保留所有权利。</p>
+        <div class="flex space-x-6">
+          <a href="#" class="text-gray-400 hover:text-gray-500 transition-custom">
+            <i class="fa fa-twitter text-xl"></i>
+          </a>
+          <a href="#" class="text-gray-400 hover:text-gray-500 transition-custom">
+            <i class="fa fa-github text-xl"></i>
+          </a>
+          <a href="#" class="text-gray-400 hover:text-gray-500 transition-custom">
+            <i class="fa fa-weixin text-xl"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
+

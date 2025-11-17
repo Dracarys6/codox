@@ -1,0 +1,363 @@
+# 项目启动指南
+
+本文档说明如何启动多人在线协作文档系统的所有服务。
+
+## 📋 服务清单
+
+根据开发阶段，需要启动的服务如下：
+
+### 基础服务（必需）
+
+1. **PostgreSQL 数据库** - 数据存储（端口 5432）
+2. **C++ 后端服务** - API 服务（端口 8080）
+3. **前端服务** - React 应用（端口 5173）
+
+### 第三阶段服务（必需）
+
+4. **协作服务** - y-websocket 服务（端口 1234）
+5. **Meilisearch** - 全文搜索服务（端口 7700）
+6. **MinIO** - 对象存储服务（端口 9000/9001）
+
+---
+
+## 🚀 启动步骤
+
+### 方式一：使用 Docker Compose + 手动启动应用服务（推荐）
+
+这是第三阶段推荐的启动方式，使用 Docker Compose 管理基础设施服务，手动启动应用服务。
+
+#### 1. 启动基础设施服务（PostgreSQL、Meilisearch、MinIO）
+
+```bash
+# 在项目根目录执行
+docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
+
+# 查看服务日志
+docker-compose logs -f
+
+# 等待所有服务健康检查通过（约 10-30 秒）
+```
+
+**服务说明：**
+- **PostgreSQL**: 自动创建数据库和用户，自动执行初始化脚本
+- **Meilisearch**: 全文搜索服务，Master Key 已在配置中
+- **MinIO**: 对象存储服务，控制台访问 http://localhost:9001
+
+**首次运行注意事项：**
+- 如果本地已有 PostgreSQL 运行在 5432 端口，`docker-compose.yml` 中的 PostgreSQL 服务已被注释。请使用本地 PostgreSQL，并确保已创建数据库和用户（见下方说明）
+- 如果使用 Docker 中的 PostgreSQL，数据库初始化脚本会自动执行（`cpp-service/sql/init.sql`）
+- Meilisearch 的 Master Key: `8a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d-7e8f9a0b1c2d3e4f5g6h7i8j9k0l`
+- MinIO 登录信息: `minioadmin` / `minioadmin`
+
+**如果使用本地 PostgreSQL（端口 5432 被占用）：**
+```bash
+# 确保本地 PostgreSQL 已启动
+sudo service postgresql start
+
+# 创建数据库和用户（如果尚未创建）
+sudo -u postgres psql << EOF
+CREATE DATABASE collab;
+CREATE USER collab WITH PASSWORD '20050430';
+GRANT ALL PRIVILEGES ON DATABASE collab TO collab;
+\q
+EOF
+
+# 执行数据库初始化脚本
+PGPASSWORD=20050430 psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/init.sql
+```
+
+#### 2. 启动 C++ 后端服务
+
+**新开一个终端窗口**
+
+```bash
+cd cpp-service
+
+# 编译（首次运行或代码修改后）
+mkdir -p build && cd build
+cmake ..
+make -j$(nproc)
+
+# 运行服务
+./cpp-service
+
+# 服务运行在 http://localhost:8080
+# 检查连接状态: http://localhost:8080/health
+```
+
+**注意：** 确保 `cpp-service/config.json` 中的配置正确：
+- `meilisearch_url`: `http://localhost:7700`
+- `meilisearch_master_key`: 与 docker-compose.yml 中的一致
+- `minio_endpoint`: `localhost:9000`
+
+#### 3. 启动前端服务
+
+**新开一个终端窗口**
+
+```bash
+cd frontend
+
+# 安装依赖（首次运行）
+npm install
+
+# 启动开发服务器
+npm run dev
+
+# 服务运行在 http://localhost:5173
+```
+
+#### 4. 启动协作服务（第三阶段）
+
+**新开一个终端窗口**
+
+```bash
+cd collab-service
+
+# 安装依赖（首次运行）
+npm install
+
+# 启动服务
+npm start
+# 或
+npx tsx server.ts
+
+# 服务运行在 ws://localhost:1234
+```
+
+**启动顺序总结：**
+1. ✅ Docker Compose 服务（PostgreSQL、Meilisearch、MinIO）
+2. ✅ C++ 后端服务
+3. ✅ 前端服务
+4. ✅ 协作服务
+
+---
+
+### 方式二：完全手动启动（不使用 Docker Compose）
+
+如果你不想使用 Docker Compose，可以手动启动所有服务：
+
+#### 1. 启动 PostgreSQL 数据库
+
+```bash
+# 启动 PostgreSQL 服务
+sudo service postgresql start
+
+# 检查服务状态
+sudo service postgresql status
+
+# 如果需要创建数据库（首次运行）
+sudo -u postgres psql << EOF
+CREATE DATABASE collab;
+CREATE USER collab WITH PASSWORD '20050430';
+GRANT ALL PRIVILEGES ON DATABASE collab TO collab;
+\q
+EOF
+
+# 执行数据库初始化脚本（首次运行）
+PGPASSWORD=20050430 psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/init.sql
+```
+
+#### 2. 启动 Meilisearch
+
+```bash
+# 使用 Docker 启动
+docker run -d \
+  --name codox-meilisearch \
+  -p 7700:7700 \
+  -v $(pwd)/meili_data:/meili_data \
+  getmeili/meilisearch:latest \
+  meilisearch --master-key="8a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d-7e8f9a0b1c2d3e4f5g6h7i8j9k0l"
+```
+
+#### 3. 启动 MinIO
+
+```bash
+# 使用 Docker 启动
+docker run -d \
+  --name codox-minio \
+  -p 9000:9000 \
+  -p 9001:9001 \
+  -v $(pwd)/minio_data:/data \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin \
+  minio/minio:latest server /data --console-address ":9001"
+
+# 访问 MinIO 控制台: http://localhost:9001
+```
+
+然后继续启动 C++ 后端、前端和协作服务（见方式一的步骤 2-4）。
+
+---
+
+## 📝 启动检查清单
+
+启动所有服务后，按顺序检查以下端点：
+
+### 1. 基础设施服务（Docker Compose）
+
+```bash
+# 检查 Docker Compose 服务状态
+docker-compose ps
+
+# 应该看到所有服务状态为 "Up (healthy)"
+```
+
+- ✅ **PostgreSQL**: 
+  ```bash
+  psql -h 127.0.0.1 -p 5432 -U collab -d collab -c "SELECT 1;"
+  ```
+  或
+  ```bash
+  docker exec codox-postgres pg_isready -U collab
+  ```
+
+- ✅ **Meilisearch**: 
+  ```bash
+  curl http://localhost:7700/health
+  ```
+  应该返回: `{"status":"available"}`
+
+- ✅ **MinIO**: 
+  - API: `curl http://localhost:9000/minio/health/live`
+  - 控制台: 浏览器访问 `http://localhost:9001` (登录: minioadmin/minioadmin)
+
+### 2. 应用服务
+
+- ✅ **C++ 后端**: 
+  ```bash
+  curl http://localhost:8080/health
+  ```
+  应该返回健康状态
+
+- ✅ **前端**: 
+  - 浏览器访问 `http://localhost:5173`
+  - 检查浏览器控制台是否有错误
+
+- ✅ **协作服务**: 
+  ```bash
+  curl http://localhost:1234
+  ```
+  应该返回 WebSocket 升级错误（这是正常的，说明服务在运行）
+
+---
+
+## 🛑 停止服务
+
+### 方式一：使用启动脚本
+
+如果使用 `start-dev.sh` 启动，按 `Ctrl+C` 即可停止所有应用服务。
+
+### 方式二：手动停止
+
+#### 停止应用服务
+
+```bash
+# 停止 C++ 后端（在运行终端按 Ctrl+C）
+
+# 停止前端（在运行终端按 Ctrl+C）
+
+# 停止协作服务（在运行终端按 Ctrl+C）
+```
+
+#### 停止基础设施服务（Docker Compose）
+
+```bash
+# 停止并删除容器（保留数据卷）
+docker-compose down
+
+# 停止并删除容器和数据卷（⚠️ 会删除所有数据）
+docker-compose down -v
+```
+
+### 方式三：使用命令停止
+
+```bash
+# 停止所有 Node.js 进程
+pkill -f "tsx server.ts"
+pkill -f "vite"
+
+# 停止 C++ 后端
+pkill -f "cpp-service"
+
+# 停止 Docker Compose 服务
+docker-compose down
+```
+
+---
+
+## ⚠️ 常见问题
+
+### 1. 端口被占用
+
+```bash
+# 检查端口占用
+sudo lsof -i :8080  # C++ 后端
+sudo lsof -i :5173  # 前端
+sudo lsof -i :1234  # 协作服务
+sudo lsof -i :5432  # PostgreSQL
+sudo lsof -i :7700  # Meilisearch
+sudo lsof -i :9000  # MinIO
+
+# 杀死占用进程
+sudo kill -9 <PID>
+```
+
+### 2. 数据库连接失败
+
+- **如果使用本地 PostgreSQL：**
+  - 检查 PostgreSQL 是否运行：`sudo service postgresql status`
+  - 确保数据库和用户已创建（见上方说明）
+  - 检查 `cpp-service/config.json` 中的数据库配置（host: 127.0.0.1, port: 5432）
+
+- **如果使用 Docker 中的 PostgreSQL：**
+  - 检查容器是否运行：`docker ps | grep postgres`
+  - 如果端口 5432 被占用，需要先停止本地 PostgreSQL 或修改 docker-compose.yml 中的端口映射
+  - 查看 PostgreSQL 日志：`docker-compose logs postgres`
+
+- **通用检查：**
+  - 检查 `cpp-service/config.json` 中的数据库配置
+  - 检查数据库用户权限
+  - 测试连接：`psql -h 127.0.0.1 -p 5432 -U collab -d collab -c "SELECT 1;"`
+
+### 3. 前端无法连接后端
+
+- 检查 `frontend/.env` 中的 `VITE_API_URL` 配置
+- 检查 C++ 后端是否正常运行
+- 检查浏览器控制台的错误信息
+
+### 4. 协作服务连接失败
+
+- 检查协作服务是否运行
+- 检查 `frontend/.env` 中的 `VITE_WS_URL` 配置
+- 检查 WebSocket 连接是否被防火墙阻止
+
+### 5. Meilisearch 连接失败
+
+- 检查 Meilisearch 容器是否运行: `docker ps | grep meilisearch`
+- 检查 `cpp-service/config.json` 中的 `meilisearch_url` 和 `meilisearch_master_key`
+- 检查 Master Key 是否与 docker-compose.yml 中的一致
+- 查看 Meilisearch 日志: `docker-compose logs meilisearch`
+
+### 6. MinIO 连接失败
+
+- 检查 MinIO 容器是否运行: `docker ps | grep minio`
+- 检查 `cpp-service/config.json` 中的 MinIO 配置
+- 查看 MinIO 日志: `docker-compose logs minio`
+- 访问 MinIO 控制台检查服务状态: http://localhost:9001
+
+---
+
+## 📚 相关文档
+
+- [第一阶段开发指南](./PHASE-01-用户认证开发指南.md)
+- [第二阶段开发指南](./PHASE-02-文档管理开发指南.md)
+- [第三阶段开发指南](./PHASE-03-协作功能开发指南.md)
+- [详细设计文档](./ARCH-02-详细设计.md)
+
+---
+
+**祝开发顺利！** 🚀
+

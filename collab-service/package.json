@@ -1,0 +1,26 @@
+{
+  "name": "collab-service",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx server.ts",
+    "dev": "tsx server.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@y/websocket-server": "^0.1.1",
+    "ws": "^8.18.3",
+    "y-protocols": "^1.0.6",
+    "y-websocket": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
