@@ -16,7 +16,6 @@ static void queryDocumentWithTags(const drogon::orm::DbClientPtr &db, int docId,
                                   std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr);
 static void queryAclAndRespond(const drogon::orm::DbClientPtr &db, int docId, int ownerId,
                                std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr);
-
 // 辅助函数：构建文档响应
 static void buildDocumentResponse(const drogon::orm::Result &r,
                                   std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr) {
@@ -266,7 +265,7 @@ void DocumentController::create(const HttpRequestPtr &req, std::function<void(co
         return;
     }
     Json::Value json = *jsonPtr;
-    std::string title = json["title"].asString();
+    std::string title = json.get("title", "").asString();
 
     // 3.验证标题
     if (title.empty()) {
