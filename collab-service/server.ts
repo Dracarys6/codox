@@ -1,3 +1,4 @@
+import 'dotenv/config'; 
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
 import { setupWSConnection } from '@y/websocket-server/utils';

@@ -10,6 +10,8 @@
         "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
     },
     "dependencies": {
+        "@tiptap/extension-collaboration": "^3.10.5",
+        "@tiptap/extension-collaboration-cursor": "^3.0.0",
         "@tiptap/extension-placeholder": "^3.10.5",
         "@tiptap/react": "^3.10.5",
         "@tiptap/starter-kit": "^3.10.5",

@@ -1,7 +1,8 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
-import { useEffect, useRef, useState } from 'react';
+import Collaboration from '@tiptap/extension-collaboration';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { apiClient } from '../api/client';
@@ -14,71 +15,84 @@ interface DocumentEditorProps {
 }
 
 export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorProps) {
-    const ydocRef = useRef<Y.Doc | null>(null);
     const providerRef = useRef<WebsocketProvider | null>(null);
     const saveIntervalRef = useRef<number | null>(null);
     const [isConnected, setIsConnected] = useState(false);
     const saveSnapshotRef = useRef<(() => Promise<void>) | null>(null);
+    const [collabResources, setCollabResources] = useState<{
+        ydoc: Y.Doc;
+        provider: WebsocketProvider;
+        docName: string;
+    } | null>(null);
+
+    const userColor = useMemo(() => {
+        const colors = [
+            '#f87171',
+            '#fb923c',
+            '#facc15',
+            '#34d399',
+            '#60a5fa',
+            '#a78bfa',
+            '#f472b6',
+        ];
+        return colors[docId % colors.length];
+    }, [docId]);
 
     // 获取 WebSocket URL（从环境变量或使用默认值）
     const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:1234';
 
-    const editor = useEditor({
-        extensions: [
-            StarterKit,
-            Placeholder.configure({
-                placeholder: '开始输入文档内容...',
-            }),
-        ],
-        content: '',
-        editorProps: {
-            attributes: {
-                class: 'focus:outline-none prose prose-lg max-w-none',
+    const editor = useEditor(
+        {
+            extensions: [
+                StarterKit,
+                Placeholder.configure({
+                    placeholder: '开始输入文档内容...',
+                }),
+                ...(collabResources
+                    ? [
+                        Collaboration.configure({
+                            document: collabResources.ydoc,
+                            field: 'prosemirror',
+                        }),
+                    ]
+                    : []),
+            ],
+            content: '',
+            editorProps: {
+                attributes: {
+                    class: 'focus:outline-none prose prose-lg max-w-none',
+                },
             },
+            editable: true,
         },
-        editable: true,
-    });
+        [collabResources?.ydoc, docId]
+    );
 
     useEffect(() => {
-        if (!editor) return;
-
         let isMounted = true;
-        let type: Y.XmlFragment | null = null;
+        const ydoc = new Y.Doc();
+        let provider: WebsocketProvider | null = null;
 
-        // 初始化协作连接
-        const connectCollaboration = async () => {
+        const setupCollaboration = async () => {
             try {
-                // 1. 创建 Yjs 文档
-                const ydoc = new Y.Doc();
-                ydocRef.current = ydoc;
-
-                // 2. 获取协作令牌
                 const tokenResponse = await apiClient.getCollaborationToken(docId);
                 const { token } = tokenResponse;
 
-                // 3. 获取引导快照（如果有）
                 try {
                     const bootstrapResponse = await apiClient.getBootstrap(docId);
                     const { snapshot_url } = bootstrapResponse;
-
-                    // 如果有快照，加载它
                     if (snapshot_url && snapshot_url !== 'null') {
                         try {
                             let snapshotBytes: Uint8Array;
-
-                            // 处理不同的快照格式
                             if (snapshot_url.startsWith('data:')) {
-                                // Base64 编码的数据 URL
                                 const base64Data = snapshot_url.split(',')[1];
                                 const jsonData = atob(base64Data);
                                 const snapshotData = JSON.parse(jsonData);
                                 snapshotBytes = new Uint8Array(snapshotData);
                             } else if (snapshot_url.startsWith('/api/collab/snapshot/')) {
-                                // 代理 URL，使用 API 客户端下载
                                 const arrayBuffer = await apiClient.downloadSnapshot(docId);
                                 snapshotBytes = new Uint8Array(arrayBuffer);
                             } else {
-                                // 普通的 URL，尝试获取二进制数据
                                 const snapshotResponse = await fetch(snapshot_url);
                                 if (!snapshotResponse.ok) {
                                     throw new Error(`Failed to fetch snapshot: ${snapshotResponse.status}`);
@@ -99,13 +113,9 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
                     console.warn('Failed to get bootstrap snapshot, starting with empty document:', error);
                 }
 
-                // 4. 创建 Yjs 类型
-                type = ydoc.getXmlFragment('prosemirror');
-
-                // 5. 连接 WebSocket
                 const docName = `doc-${docId}`;
-                // 只传入基础地址，避免在 serverUrl 上拼接 query 导致路径异常
-                const provider = new WebsocketProvider(wsUrl || 'ws://localhost:1234', docName, ydoc, {
+                const baseWsUrl = wsUrl || 'ws://localhost:1234';
+                provider = new WebsocketProvider(baseWsUrl, docName, ydoc, {
                     params: {
                         docId: String(docId),
                         token,
@@ -114,129 +124,119 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
                 });
                 providerRef.current = provider;
 
-                // 监听连接状态
-                provider.on('status', (event: { status: string }) => {
-                    if (isMounted) {
-                        console.log('WebSocket status:', event.status);
-                        if (event.status === 'connected') {
-                            setIsConnected(true);
-                        } else {
-                            setIsConnected(false);
-                        }
-                    }
+                provider.awareness.setLocalStateField('user', {
+                    name: `User-${docId}`,
+                    color: userColor,
                 });
 
-                // 监听同步状态（当 Yjs 文档同步完成时）
-                provider.on('sync', (isSynced: boolean) => {
-                    if (isMounted && isSynced) {
-                        setIsConnected(true);
-                    }
-                });
-
-                // 6. 同步编辑器内容到 Yjs
-                // 注意：这是一个简化的实现，完整的协作功能需要使用 @tiptap/extension-collaboration
-                // 这里我们主要依赖 WebsocketProvider 进行基本的文档同步
-                if (isMounted && editor && type && ydoc) {
-                    // 监听Yjs文档变化并更新编辑器
-                    const currentType = type; // 创建局部变量避免null检查问题
-                    const updateHandler = () => {
-                        if (!isMounted || !currentType) return;
-                        const xmlContent = currentType.toString();
-                        if (xmlContent && editor.getHTML() !== xmlContent) {
-                            // 暂时不自动同步，避免冲突
-                            // 在实际应用中应该使用 @tiptap/extension-collaboration
-                        }
-                    };
-
-                    currentType.observeDeep(updateHandler);
+                if (isMounted) {
+                    setCollabResources({ ydoc, provider, docName });
                 }
-
-                // 7. 创建保存快照的函数
-                const saveSnapshot = async (): Promise<void> => {
-                    if (!isMounted || !ydoc) return;
-
-                    // 验证 docId 是否有效
-                    if (!docId || isNaN(docId) || docId <= 0) {
-                        console.error('Invalid docId, skipping snapshot save:', docId);
-                        return;
-                    }
-
-                    try {
-                        const state = Y.encodeStateAsUpdate(ydoc);
-                        const snapshot = Array.from(state);
-
-                        if (snapshot.length === 0) {
-                            console.log('Empty document, skipping save');
-                            return; // 空文档不保存
-                        }
-
-                        const snapshotJson = JSON.stringify(snapshot);
-                        const sha256 = await calculateSHA256(snapshotJson);
-
-                        // 上传到 MinIO
-                        const snapshotUrl = await uploadSnapshot(docId, snapshot, sha256);
-
-                        // 保存快照元数据到后端
-                        await apiClient.saveSnapshot(docId, {
-                            snapshot_url: snapshotUrl,
-                            sha256,
-                            size_bytes: snapshot.length,
-                        });
-
-                        if (onSave && isMounted) {
-                            onSave();
-                        }
-                        console.log('Snapshot saved successfully');
-                    } catch (error) {
-                        console.error('Failed to save snapshot:', error);
-                        throw error; // 重新抛出错误，让调用者知道保存失败
-                    }
-                };
-
-                // 将保存函数存储到 ref，供外部调用
-                saveSnapshotRef.current = saveSnapshot;
-
-                // 通知外部保存函数已准备好
-                if (onSaveReady && isMounted) {
-                    onSaveReady(saveSnapshot);
-                }
-
-                // 8. 定期保存快照（每 30 秒）
-                saveIntervalRef.current = window.setInterval(async () => {
-                    try {
-                        await saveSnapshot();
-                    } catch (error) {
-                        // 定期保存失败不影响用户操作
-                        console.error('Periodic save failed:', error);
-                    }
-                }, 30000);
-
             } catch (error) {
-                console.error('Failed to connect collaboration:', error);
-                // 即使协作连接失败，也允许本地编辑
+                console.error('Failed to initialize collaboration:', error);
+                provider?.destroy();
+                ydoc.destroy();
             }
         };
 
-        connectCollaboration();
+        setupCollaboration();
 
-        // 清理函数
         return () => {
             isMounted = false;
+            setCollabResources(null);
+            provider?.destroy();
+            ydoc.destroy();
+            providerRef.current = null;
+        };
+    }, [docId, wsUrl, userColor]);
 
+    useEffect(() => {
+        if (!editor || !collabResources) return;
+
+        let isMounted = true;
+        const { ydoc, provider } = collabResources;
+
+        const handleStatus = (event: { status: string }) => {
+            if (isMounted) {
+                console.log('WebSocket status:', event.status);
+                setIsConnected(event.status === 'connected');
+            }
+        };
+
+        const handleSync = (isSynced: boolean) => {
+            if (isMounted && isSynced) {
+                setIsConnected(true);
+            }
+        };
+
+        provider.on('status', handleStatus);
+        provider.on('sync', handleSync);
+
+        const saveSnapshot = async (): Promise<void> => {
+            if (!isMounted) return;
+            if (!docId || isNaN(docId) || docId <= 0) {
+                console.error('Invalid docId, skipping snapshot save:', docId);
+                return;
+            }
+
+            try {
+                const state = Y.encodeStateAsUpdate(ydoc);
+                const snapshot = Array.from(state);
+
+                if (snapshot.length === 0) {
+                    console.log('Empty document, skipping save');
+                    return;
+                }
+
+                const snapshotJson = JSON.stringify(snapshot);
+                const sha256 = await calculateSHA256(snapshotJson);
+                const snapshotUrl = await uploadSnapshot(docId, snapshot, sha256);
+
+                await apiClient.saveSnapshot(docId, {
+                    snapshot_url: snapshotUrl,
+                    sha256,
+                    size_bytes: snapshot.length,
+                });
+
+                if (onSave && isMounted) {
+                    onSave();
+                }
+                console.log('Snapshot saved successfully');
+            } catch (error) {
+                console.error('Failed to save snapshot:', error);
+                throw error;
+            }
+        };
+
+        saveSnapshotRef.current = saveSnapshot;
+
+        if (onSaveReady) {
+            onSaveReady(saveSnapshot);
+        }
+
+        saveIntervalRef.current = window.setInterval(async () => {
+            try {
+                await saveSnapshot();
+            } catch (error) {
+                console.error('Periodic save failed:', error);
+            }
+        }, 30000);
+
+        return () => {
+            isMounted = false;
             if (saveIntervalRef.current !== null) {
                 window.clearInterval(saveIntervalRef.current);
                 saveIntervalRef.current = null;
             }
-            if (providerRef.current) {
-                providerRef.current.destroy();
-                providerRef.current = null;
+            if (provider?.off) {
+                provider.off('status', handleStatus as any);
+                provider.off('sync', handleSync as any);
             }
-            if (ydocRef.current) {
-                ydocRef.current.destroy();
-                ydocRef.current = null;
+            if (saveSnapshotRef.current === saveSnapshot) {
+                saveSnapshotRef.current = null;
             }
         };
-    }, [editor, docId, wsUrl, onSave, onSaveReady]);
+    }, [editor, collabResources, docId, onSave, onSaveReady]);
 
     return (
         <div className="border-2 border-blue-300/60 rounded-2xl bg-white shadow-xl overflow-hidden">
