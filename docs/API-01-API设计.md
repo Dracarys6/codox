@@ -5,8 +5,8 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 
 # codox API 总览
 
-> 文档版本：2025-11-16  codox
-> 维护人：研发团队（最后更新：更新第三阶段和第四阶段已实现接口）
+> 文档版本：2025-11-19  codox
+> 维护人：研发团队（已同步第四阶段实时通讯与 ACL 进展，附上后续增强计划）
 
 ---
 
@@ -59,6 +59,8 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 - `GET /api/notifications/unread-count` — 获取当前用户的未读通知总数。
 
 > ✅ 通知中心模块已完成实现，支持通知查询、已读标记和未读计数功能。
+>
+> 🔧 正在扩展：增加 `type` / `doc_id` / `start_date` / `end_date` 过滤参数以及通知偏好接口。
 
 ### 全文搜索
 - `GET /api/search` — 根据关键词搜索文档，支持 `q`（查询关键词）、`page`、`page_size` 参数，返回结果按权限过滤，仅包含用户有权限访问的文档。
@@ -81,6 +83,35 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 - `POST /api/docs/{id}/publish` — owner/editor 发布新版本，写入 `document_version` 并更新 `last_published_version_id`。
 - `GET /api/docs/{id}/versions` — 列出历史版本记录。
 - `POST /api/docs/{id}/rollback/{versionId}` — 将文档回滚到指定版本（需记录操作者及生成新版本或标记回滚）。
+
+---
+
+## 即将上线接口（第四阶段增强）
+
+### 通知过滤 & 偏好
+- `GET /api/notifications` — 增强查询参数：`type`、`doc_id`、`start_date`、`end_date`、`unread_only`。
+- `GET /api/notification-settings` — 查询当前用户对各类通知的偏好（站内 / 邮件 / 推送）。
+- `PUT /api/notification-settings/{type}` — 更新单个通知类型的偏好。
+- WebSocket 通道：在 `collab-service` 中扩展 `/notifications`，推送实时通知。
+
+### 文档导入导出
+- `POST /api/documents/import/word|pdf|markdown` — 上传文件，异步转换为内部格式，返回文档 ID 与导入记录。
+- `GET /api/documents/{id}/export/word|pdf|markdown` — 基于最新快照导出指定格式。
+- `GET /api/documents/{id}/import-jobs` — (可选) 查看导入任务状态与失败原因。
+
+### 文档版本增强
+- `GET /api/docs/{id}/versions/{versionId}` — 查看单个版本详情、快照元数据。
+- `POST /api/docs/{id}/versions` — 手动保存版本（附带 `change_summary`）。
+- `POST /api/docs/{id}/versions/{versionId}/restore` — 一键恢复，自动写入新的版本记录（含“来源版本”字段）。
+
+### 用户管理 / 运营
+- `GET /api/admin/users` — 分页、角色、状态、关键字筛选；需要 `admin` 权限。
+- `PATCH /api/admin/users/{id}` — 修改账号状态（启用/停用）、锁定、备注。
+- `POST /api/admin/users/{id}/roles` — 调整角色集合；操作写入审计日志。
+- `GET /api/admin/user-analytics` — 根据时间段输出活跃度、文档/评论/任务等指标。
+- `POST /api/feedback` & `GET /api/feedback/stat` — 收集满意度问卷并生成汇总报表。
+
+> 以上接口的详细行为、错误码、字段定义，详见《PHASE-04-功能完善开发指南.md》与《ARCH-02-详细设计.md》中的最新章节。
 
 ---
 
@@ -129,6 +160,16 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 ### 第四阶段已实现模块
 - **实时通讯组件**  
   聊天室列表、消息列表、消息发送、已读状态、文件/图片消息支持、消息回复功能。
+
+### 第四阶段规划模块
+- **通知中心增强**  
+  类型/文档筛选、日期范围选择器、通知偏好面板、实时推送提示。
+- **导入导出向导**  
+  Word/PDF/Markdown 上传、进度反馈、冲突提示、导出按钮组。
+- **版本时间线 / Diff 视图**  
+  版本快照列表、差异高亮、只读预览、恢复确认弹窗。
+- **管理员控制台**  
+  用户列表视图、批量启停、角色调整、活跃度图表、满意度反馈收集。
 
 > 建议在每个阶段交付后同步更新本节，确保前后端模块与 API 设计一一对应。
 

@@ -7,19 +7,20 @@
 
 当前仓库涵盖：
 
-- `cpp-service`：Drogon + PostgreSQL 的主业务 API（文codox档、权限、评论、任务、通知、搜索网关等）
-- `collab-service`：Yjs WebSocket 网关，负责实时协作数据通道
-- `frontend`：Tiptap 编辑器 + React 前端，接入实时协作、评论与任务面板
-- `docs`：逐阶段的设计 / 验收指南（第三阶段主打实时协作与协同工具）
+- `cpp-service`：Drogon + PostgreSQL 的主业务 API（文档、权限、评论、任务、通知、搜索、实时通讯等）
+- `collab-service`：Yjs WebSocket 网关，负责实时协作与聊天室数据通道
+- `frontend`：Tiptap 编辑器 + React 前端，集成协作、通知、任务与聊天面板
+- `docs`：逐阶段的设计 / 验收指南（第四阶段聚焦实时通讯、通知增强、导入导出与用户管理）
 
 ### 核心功能&进度
 
 - ✅ **认证与安全**：注册 / 登录 / Token 刷新、SHA-256+Salt、JwtAuthFilter
-- ✅ **文档 & 权限**：文档 CRUD、版本、ACL（第二阶段主线）
-- ✅ **实时协作基础**：协作令牌、快照回调、DocumentEditor + collab-service （Beta）
-- 🟡 **评论 / 任务 / 通知 API**：后端接口已就绪，等待前端整合
-- 🟡 **全文搜索**：Meilisearch 接入层已预置，待前端结果页
-- ⏳ **多端体验**：评论、任务、搜索的前端 UI 正在收尾
+- ✅ **文档 & 权限**：文档 CRUD、ACL、版本发布/回滚、快照（MinIO）
+- ✅ **实时协作**：Yjs + y-websocket、协作令牌、快照回调、引导快照
+- ✅ **评论 / 任务 / 通知**：后端接口 + 前端侧边栏/看板/通知中心
+- ✅ **全文搜索**：Meilisearch 索引同步 + 搜索页
+- ✅ **实时通讯**：ChatController、聊天室/消息 API、WebSocket 聊天组件
+- 🔄 **阶段 4 增强**：通知过滤与偏好、文档导入导出、版本时间线/差异、管理员用户管理与运营分析
 
 ## 🛠️ 技术栈
 
@@ -355,7 +356,7 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 - **[第一阶段开发指南](./docs/PHASE-01-用户认证开发指南.md)** - 用户认证与基础功能 ✅
 - **[第二阶段开发指南](./docs/PHASE-02-文档管理开发指南.md)** - 文档 CRUD、权限管理与版本控制 ✅
 - **[第三阶段开发指南](./docs/PHASE-03-协作功能开发指南.md)** - 实时协作、评论、任务、通知、搜索 ✅
-- **[第四阶段开发指南](./docs/PHASE-04-导入导出开发指南.md)** - 导入导出、模板系统、监控与日志 📅
+- **[第四阶段开发指南](./docs/PHASE-04-功能完善开发指南.md)** - 实时通讯、通知增强、导入导出、版本与用户管理
 - **[项目启动指南](./docs/GUIDE-01-项目启动指南.md)** - 项目启动和运行指南
 - **[后端 API 测试方法](./docs/GUIDE-02-后端API测试方法.md)** - API 测试方法
 
@@ -410,12 +411,12 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 ### 📅 第四阶段（当前开发）
 
-- [x] 文档权限管理
-- [x] 文档实时通讯（内置聊天）
-- [ ] 文档导入导出（Word/PDF/Markdown）
-- [ ] 移动端支持（PWA）
-- [ ] 监控与告警（Prometheus + Grafana）
-- [ ] 集中日志（Loki/ELK）
+- [x] ACL 巩固 & 前端联调（`GET/PUT /api/docs/{id}/acl`、`AclManager`）
+- [x] 文档实时通讯（ChatController、WebSocket、未读同步）
+- [ ] 通知系统增强（过滤参数、`notification_setting`、WS 推送）
+- [ ] 文档导入导出（Word / PDF / Markdown）
+- [ ] 文档版本控制增强（手动版本、diff、恢复体验）
+- [ ] 用户管理与运营（管理员用户列表、角色调整、行为分析、满意度调查）
 
 ## 🤝 贡献
 

@@ -114,12 +114,80 @@ CREATE TABLE notification (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 实时通讯
+CREATE TABLE chat_room (
+  id BIGSERIAL PRIMARY KEY,
+  name VARCHAR(255),
+  type VARCHAR(20) NOT NULL,         -- direct / group / document
+  doc_id BIGINT REFERENCES document(id) ON DELETE SET NULL,
+  created_by BIGINT NOT NULL REFERENCES "user"(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE chat_room_member (
+  id BIGSERIAL PRIMARY KEY,
+  room_id BIGINT NOT NULL REFERENCES chat_room(id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_read_at TIMESTAMPTZ,
+  UNIQUE(room_id, user_id)
+);
+
+CREATE TABLE chat_message (
+  id BIGSERIAL PRIMARY KEY,
+  room_id BIGINT NOT NULL REFERENCES chat_room(id) ON DELETE CASCADE,
+  sender_id BIGINT NOT NULL REFERENCES "user"(id),
+  content TEXT,
+  message_type VARCHAR(20) NOT NULL DEFAULT 'text',
+  file_url TEXT,
+  reply_to BIGINT REFERENCES chat_message(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE chat_message_read (
+  id BIGSERIAL PRIMARY KEY,
+  message_id BIGINT NOT NULL REFERENCES chat_message(id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(message_id, user_id)
+);
+
+-- 通知偏好
+CREATE TABLE notification_setting (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  notification_type VARCHAR(50) NOT NULL,
+  email_enabled BOOLEAN DEFAULT TRUE,
+  push_enabled BOOLEAN DEFAULT TRUE,
+  in_app_enabled BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, notification_type)
+);
+
+-- 用户行为聚合（用于运营分析，按需开启）
+CREATE TABLE user_activity_daily (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  activity_date DATE NOT NULL,
+  login_count INTEGER DEFAULT 0,
+  edit_count INTEGER DEFAULT 0,
+  comment_count INTEGER DEFAULT 0,
+  task_updates INTEGER DEFAULT 0,
+  UNIQUE(user_id, activity_date)
+);
+
 -- 索引
 CREATE INDEX idx_document_owner_updated ON document(owner_id, updated_at DESC);
 CREATE INDEX idx_doc_tag_tag ON doc_tag(tag_id);
 CREATE INDEX idx_comment_doc_created ON comment(doc_id, created_at DESC);
 CREATE INDEX idx_task_doc_status ON task(doc_id, status);
 CREATE INDEX idx_notification_user_created ON notification(user_id, created_at DESC);
+CREATE INDEX idx_chat_room_member ON chat_room_member(room_id, user_id);
+CREATE INDEX idx_chat_message_room_created ON chat_message(room_id, created_at DESC);
+CREATE INDEX idx_notification_setting_user_type ON notification_setting(user_id, notification_type);
+CREATE INDEX idx_user_activity_daily_date ON user_activity_daily(activity_date);
 ```
 
 ### 设计要点
@@ -582,6 +650,172 @@ Authorization: Bearer <access_token>
 }
 ```
 
+### 实时通讯 API
+
+#### 创建聊天室
+
+```http
+POST /api/chat/rooms
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "name": "项目 A 讨论",
+  "type": "document",        // direct | group | document
+  "doc_id": 42,
+  "member_ids": [2, 3, 4]
+}
+```
+
+- 验证调用者权限；文档型聊天室会校验 `doc_acl`
+- 自动将创建者加入 `chat_room_member`
+
+#### 获取聊天室列表
+
+```http
+GET /api/chat/rooms?page=1&page_size=20
+Authorization: Bearer <access_token>
+```
+
+响应包含 last_message、last_message_time、unread_count。
+
+#### 发送消息
+
+```http
+POST /api/chat/rooms/{id}/messages
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "content": "今晚 8 点上线",
+  "message_type": "text",
+  "reply_to": 123
+}
+```
+
+- 支持文件消息（`file_url` 字段，复用 MinIO）
+- 成功后返回消息 ID、时间戳、回执
+
+#### 获取消息历史 / 游标分页
+
+```http
+GET /api/chat/rooms/{id}/messages?page=1&page_size=50&before_id=456
+Authorization: Bearer <access_token>
+```
+
+- 验证调用者在聊天室内
+- `before_id` 提供游标翻页
+
+#### 标记消息已读
+
+```http
+POST /api/chat/messages/{id}/read
+Authorization: Bearer <access_token>
+```
+
+- 更新 `chat_message_read` 与成员 `last_read_at`
+- 失败不影响主流程
+
+#### WebSocket 协议（collab-service）
+
+- `ws://<collab-service>/chat?room_id=xx&token=yy`
+- 支持事件：`join`、`message`、`typing`、`read`
+- 通过 HTTP API 完成持久化，再广播给房间成员
+
+### 通知增强 & 偏好设置 API
+
+#### 带过滤条件的通知列表
+
+```http
+GET /api/notifications?type=comment&doc_id=18&unread_only=true&start_date=2025-11-01
+Authorization: Bearer <access_token>
+```
+
+#### 通知偏好
+
+```http
+GET /api/notification-settings
+Authorization: Bearer <access_token>
+
+PUT /api/notification-settings/{type}
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "email_enabled": true,
+  "push_enabled": false,
+  "in_app_enabled": true
+}
+```
+
+- `notification_type` 例如 `comment`, `task_assigned`, `permission_changed`
+- 后端在发送通知时读取设置并决定投递渠道
+
+### 文档导入导出 API（规划）
+
+| Endpoint | 方法 | 说明 |
+| -------- | ---- | ---- |
+| `/api/documents/import/word` | POST (multipart) | 上传 Word，转换为内部格式后创建文档 |
+| `/api/documents/import/pdf` | POST (multipart) | 上传 PDF，提取文本/图片 |
+| `/api/documents/import/markdown` | POST (multipart) | 上传 Markdown，转换为 ProseMirror JSON |
+| `/api/documents/{id}/export/word` | GET | 基于最新快照导出 Word |
+| `/api/documents/{id}/export/pdf` | GET | 导出 PDF |
+| `/api/documents/{id}/export/markdown` | GET | 导出 Markdown |
+
+- 后端可内嵌转换库或通过 `doc-converter-service`（Node.js）桥接
+- 导入成功后记录版本信息与导入来源
+
+### 管理员 / 用户运营 API（规划）
+
+#### 用户列表
+
+```http
+GET /api/admin/users?role=editor&status=active&keyword=alice&page=1&page_size=20
+Authorization: Bearer <admin_token>
+```
+
+返回字段：基本信息、角色、最近登录、文档数量、是否锁定等。
+
+#### 权限调整
+
+```http
+POST /api/admin/users/{id}/roles
+Authorization: Bearer <admin_token>
+Content-Type: application/json
+
+{
+  "roles": ["editor", "collab_manager"]
+}
+```
+
+所有变更写入审计日志。
+
+#### 用户行为分析
+
+```http
+GET /api/admin/user-analytics?from=2025-11-01&to=2025-11-30&dimension=team
+Authorization: Bearer <admin_token>
+```
+
+数据来源 `user_activity_daily`，用于生成活跃度、编辑次数等图表。
+
+#### 满意度 / 反馈收集
+
+```http
+POST /api/feedback
+Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{
+  "dimension": "editor_experience",
+  "score": 4,
+  "comment": "希望增加夜间模式"
+}
+```
+
+管理员可通过 `GET /api/feedback/stat` 查看统计。
+
+
 ### 搜索相关 API
 
 #### 全文搜索
@@ -981,6 +1215,28 @@ Client -> POST /api/collab/token
     -> 获取指定版本快照
       -> 设为引导快照
         -> 触发发布流程
+```
+
+### 6. 实时通讯消息流程
+
+```.
+Client -> POST /api/chat/rooms/{id}/messages
+  -> JwtAuthFilter（校验用户属于房间）
+    -> ChatController::sendMessage
+      -> 写入 chat_message / chat_message_read
+        -> 返回消息 ID + 时间戳
+          -> 调用 collab-service WebSocket 广播 {type:"message", ...}
+            -> 其他客户端 append 消息并更新未读
+```
+
+断线重连：
+
+```.
+Client -> WebSocket reconnect
+  -> chat-handler 校验 token + room_id
+    -> 重新加入房间
+      -> HTTP 拉取历史消息补齐 gap
+        -> 更新 last_read_at，清空未读
 ```
 
 ---

@@ -12,24 +12,24 @@
 
 ### 0. 文档权限管理（ACL）接口（优先级：最高 ⭐⭐⭐）⚠️
 
-> ⚠️ **重要**：这是基础功能，虽然前端已有 `AclManager` 组件，但后端接口尚未实现。**必须在第四阶段优先完成**，这是所有其他功能的基础。ACL 接口的缺失会影响用户权限管理的完整性，需要在实时通讯模块之前完成实现。
+> ⚠️ **重要**
 
-- [ ] **ACL 查询接口**
-  - [ ] 后端：实现 `GET /api/docs/{id}/acl` 接口
-  - [ ] 后端：验证只有文档 owner 可以查看 ACL
-  - [ ] 后端：返回 ACL 列表，包含用户信息和权限
-  - [ ] 测试：验证权限检查和数据返回
+- [x] **ACL 查询接口**
+  - [x] 后端：实现 `GET /api/docs/{id}/acl` 接口
+  - [x] 后端：验证只有文档 owner 可以查看 ACL
+  - [x] 后端：返回 ACL 列表，包含用户信息和权限
+  - [x] 测试：验证权限检查和数据返回
 
-- [ ] **ACL 更新接口**
-  - [ ] 后端：实现 `PUT /api/docs/{id}/acl` 接口
-  - [ ] 后端：验证只有文档 owner 可以修改 ACL
-  - [ ] 后端：验证权限枚举值（viewer、editor）
-  - [ ] 后端：防止删除 owner 权限
-  - [ ] 后端：使用事务确保数据一致性
+- [x] **ACL 更新接口**
+  - [x] 后端：实现 `PUT /api/docs/{id}/acl` 接口
+  - [x] 后端：验证只有文档 owner 可以修改 ACL
+  - [x] 后端：验证权限枚举值（viewer、editor）
+  - [x] 后端：防止删除 owner 权限
+  - [x] 后端：使用事务确保数据一致性
   - [ ] 测试：验证权限检查、数据更新和异常处理
 
-- [ ] **前端集成**
-  - [ ] 验证 `AclManager` 组件与后端接口的集成
+- [x] **前端集成**
+  - [x] 验证 `AclManager` 组件与后端接口的集成
   - [ ] 测试 ACL 的增删改查功能
 
 ### 1. 实时通讯模块（优先级：最高 ⭐⭐⭐）
@@ -117,41 +117,37 @@
   - [ ] 前端：上传 Markdown 文件导入
   - [ ] 前端：导出为 Markdown 文件
 
-### 4. 监控与告警（优先级：高 ⭐⭐）
+### 4. 文档版本控制（优先级：高 ⭐⭐）
 
-- [ ] **Prometheus 集成**
-  - [ ] 后端：暴露 Prometheus metrics 端点
-  - [ ] 后端：添加业务指标（请求数、错误率、响应时间等）
-  - [ ] 配置：Prometheus 服务配置
-  - [ ] 配置：Grafana 仪表板配置
+- [ ] **版本存储**
+  - [ ] 数据库：创建 `doc_version` 表，记录版本号、快照、变更摘要
+  - [ ] 后端：保存版本、获取版本列表、单版本详情接口
+  - [ ] 与 MinIO/协作快照联动，支持大文件存储
 
-- [ ] **健康检查增强**
-  - [ ] 后端：详细的健康检查接口（数据库、Meilisearch、MinIO 状态）
-  - [ ] 前端：健康状态展示
+- [ ] **版本比较与恢复**
+  - [ ] 后端：提供 diff 数据（基于 Yjs 更新或文本 diff）
+  - [ ] 前端：版本时间线、版本差异对比视图
+  - [ ] 前端：一键回滚至历史版本
 
-### 5. 集中日志（优先级：高 ⭐⭐）
+- [ ] **版本策略**
+  - [ ] 自动版本（如每次发布/定时快照）
+  - [ ] 手动版本（用户点击“保存版本”）
+  - [ ] 版本保留策略、清理任务
 
-- [ ] **日志聚合**
-  - [ ] 后端：结构化日志输出（JSON 格式）
-  - [ ] 配置：Loki 或 ELK 集成
-  - [ ] 配置：日志收集配置
+### 5. 用户管理（优先级：高 ⭐⭐）
 
-- [ ] **日志查询与分析**
-  - [ ] Grafana 日志查询界面
-  - [ ] 错误日志告警规则
-
-### 6. 移动端支持（优先级：中 ⭐）
-
-- [ ] **PWA 配置**
-  - [ ] 前端：配置 Service Worker
-  - [ ] 前端：配置 Web App Manifest
-  - [ ] 前端：离线支持
-  - [ ] 前端：安装提示
-
-- [ ] **响应式优化**
-  - [ ] 移动端编辑器适配
-  - [ ] 移动端导航优化
-  - [ ] 触摸手势支持
+- [ ] **用户列表管理**（参考《需求文档》6.2）
+  - [ ] 后端：支持分页、筛选、排序的用户列表 API
+  - [ ] 前端：管理界面展示基础信息、搜索、批量操作
+- [ ] **用户权限调整**
+  - [ ] 后端：提供角色／权限调整接口（基于 RBAC + ACL）
+  - [ ] 前端：角色切换、权限矩阵、操作确认
+- [ ] **用户行为分析**
+  - [ ] 数据：记录登录日志、文档活跃度等指标
+  - [ ] 后端：汇总统计接口；前端：可视化图表/看板
+- [ ] **用户满意度调查**
+  - [ ] 前端：在合适入口弹出调查问卷或反馈表单
+  - [ ] 后端：收集与分析反馈结果
 
 ---
 
@@ -448,6 +444,584 @@ void DocumentController::updateAcl(const HttpRequestPtr& req,
 ### 步骤 1：实时通讯模块
 
 #### 1.1 内置聊天功能
+
+**API 设计详情**：
+
+- **POST /api/chat/rooms** - 创建聊天室
+  - 请求体：`{ "name": "群聊名称", "type": "group|direct|document", "doc_id": 123, "member_ids": [1, 2, 3] }`
+  - 响应：`{ "id": 1, "name": "...", "type": "...", "created_at": "..." }`
+  - 实现要点：
+    - 验证用户权限
+    - 创建聊天室记录
+    - 自动添加创建者和指定成员到 `chat_room_member`
+    - 如果是文档聊天室，验证文档访问权限
+
+- **GET /api/chat/rooms** - 获取用户聊天室列表
+  - 查询参数：`?page=1&page_size=20`
+  - 响应：`{ "rooms": [...], "page": 1, "page_size": 20, "total": 10 }`
+  - 实现要点：
+    - 查询用户参与的所有聊天室
+    - 包含最后一条消息预览
+    - 包含未读消息数量
+    - 按最后消息时间排序
+
+- **POST /api/chat/rooms/:id/members** - 添加成员
+  - 请求体：`{ "user_ids": [4, 5] }`
+  - 响应：`{ "message": "Members added successfully" }`
+  - 实现要点：
+    - 验证当前用户是聊天室成员
+    - 批量插入成员记录
+    - 发送系统消息通知新成员
+
+- **GET /api/chat/rooms/:id/messages** - 获取消息历史
+  - 查询参数：`?page=1&page_size=50&before_id=100`（分页和游标）
+  - 响应：`{ "messages": [...], "has_more": true }`
+  - 实现要点：
+    - 验证用户是聊天室成员
+    - 支持游标分页（before_id）和偏移分页
+    - 包含发送者信息（nickname, avatar_url）
+    - 包含已读状态
+
+- **POST /api/chat/rooms/:id/messages** - 发送消息
+  - 请求体：`{ "content": "消息内容", "message_type": "text|file|image", "file_url": "...", "reply_to": 123 }`
+  - 响应：`{ "id": 456, "content": "...", "created_at": "..." }`
+  - 实现要点：
+    - 验证用户是聊天室成员
+    - 插入消息记录
+    - 通过 WebSocket 广播给所有成员
+    - 创建未读记录（除了发送者）
+
+- **POST /api/chat/messages/:id/read** - 标记消息已读
+  - 请求体：无
+  - 响应：`{ "message": "Marked as read" }`
+  - 实现要点：
+    - 插入或更新 `chat_message_read` 记录
+    - 更新 `chat_room_member.last_read_at`
+
+2. **WebSocket 聊天服务实现**（在 `collab-service` 中扩展）
+
+```typescript
+// collab-service/src/chat-handler.ts
+import { WebSocket } from 'ws';
+import { v4 as uuidv4 } from 'uuid';
+
+interface ChatMessage {
+  type: 'message' | 'typing' | 'read' | 'join' | 'leave';
+  room_id: number;
+  user_id: number;
+  content?: string;
+  message_id?: number;
+}
+
+class ChatHandler {
+  private rooms: Map<number, Set<WebSocket>> = new Map();
+  private userSockets: Map<number, Set<WebSocket>> = new Map();
+
+  handleConnection(ws: WebSocket, userId: number) {
+    // 存储用户连接
+    if (!this.userSockets.has(userId)) {
+      this.userSockets.set(userId, new Set());
+    }
+    this.userSockets.get(userId)!.add(ws);
+
+    ws.on('message', async (data: string) => {
+      try {
+        const msg: ChatMessage = JSON.parse(data);
+        await this.handleMessage(ws, userId, msg);
+      } catch (error) {
+        ws.send(JSON.stringify({ error: 'Invalid message format' }));
+      }
+    });
+
+    ws.on('close', () => {
+      this.handleDisconnection(ws, userId);
+    });
+  }
+
+  private async handleMessage(ws: WebSocket, userId: number, msg: ChatMessage) {
+    switch (msg.type) {
+      case 'join':
+        await this.joinRoom(ws, userId, msg.room_id);
+        break;
+      case 'message':
+        await this.broadcastMessage(userId, msg);
+        break;
+      case 'typing':
+        this.broadcastTyping(msg.room_id, userId);
+        break;
+      case 'read':
+        await this.markAsRead(userId, msg.message_id!);
+        break;
+    }
+  }
+
+  private async joinRoom(ws: WebSocket, userId: number, roomId: number) {
+    if (!this.rooms.has(roomId)) {
+      this.rooms.set(roomId, new Set());
+    }
+    this.rooms.get(roomId)!.add(ws);
+    
+    // 通知其他成员
+    this.broadcastToRoom(roomId, {
+      type: 'join',
+      room_id: roomId,
+      user_id: userId
+    }, ws);
+  }
+
+  private async broadcastMessage(userId: number, msg: ChatMessage) {
+    // 1. 保存消息到数据库（通过 HTTP API 调用 cpp-service）
+    const response = await fetch(`http://localhost:8080/api/chat/rooms/${msg.room_id}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getUserToken(userId)}`
+      },
+      body: JSON.stringify({
+        content: msg.content,
+        message_type: 'text'
+      })
+    });
+    
+    const savedMsg = await response.json();
+    
+    // 2. 广播给房间所有成员
+    this.broadcastToRoom(msg.room_id, {
+      type: 'message',
+      ...savedMsg
+    });
+  }
+
+  private broadcastToRoom(roomId: number, data: any, exclude?: WebSocket) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    
+    const message = JSON.stringify(data);
+    room.forEach(ws => {
+      if (ws !== exclude && ws.readyState === WebSocket.OPEN) {
+        ws.send(message);
+      }
+    });
+  }
+}
+```
+
+**前端实现**：
+
+1. **WebSocket 客户端封装** (`frontend/src/hooks/useChatWebSocket.ts`)
+
+   ```typescript
+import { useEffect, useRef, useState } from 'react';
+
+interface ChatMessage {
+  id: number;
+  room_id: number;
+  sender_id: number;
+  content: string;
+  message_type: string;
+  created_at: string;
+}
+
+export function useChatWebSocket(roomId: number | null, userId: number) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    if (!roomId) return;
+
+    const ws = new WebSocket(`ws://localhost:3001/chat?room_id=${roomId}&user_id=${userId}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setIsConnected(true);
+      // 发送加入房间消息
+      ws.send(JSON.stringify({
+        type: 'join',
+        room_id: roomId,
+        user_id: userId
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'message') {
+        setMessages(prev => [...prev, data]);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+      setIsConnected(false);
+      // 自动重连逻辑
+      setTimeout(() => {
+        if (roomId) {
+          // 重新连接
+        }
+      }, 3000);
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [roomId, userId]);
+
+  const sendMessage = (content: string) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'message',
+        room_id: roomId,
+        user_id: userId,
+        content: content
+      }));
+    }
+  };
+
+  return { messages, isConnected, sendMessage };
+}
+```
+
+2. **聊天组件实现** (`frontend/src/components/chat/ChatWindow.tsx`)
+
+```typescript
+import React, { useState, useRef, useEffect } from 'react';
+import { useChatWebSocket } from '../../hooks/useChatWebSocket';
+
+interface ChatWindowProps {
+  roomId: number;
+  userId: number;
+}
+
+export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId, userId }) => {
+  const [input, setInput] = useState('');
+  const { messages, isConnected, sendMessage } = useChatWebSocket(roomId, userId);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = () => {
+    if (input.trim()) {
+      sendMessage(input);
+      setInput('');
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* 消息列表 */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`mb-4 ${msg.sender_id === userId ? 'text-right' : 'text-left'}`}
+          >
+            <div className={`inline-block p-2 rounded ${
+              msg.sender_id === userId ? 'bg-blue-500 text-white' : 'bg-gray-200'
+            }`}>
+              {msg.content}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {new Date(msg.created_at).toLocaleTimeString()}
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* 输入框 */}
+      <div className="border-t p-4">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+            className="flex-1 border rounded px-3 py-2"
+            placeholder="输入消息..."
+          />
+          <button
+            onClick={handleSend}
+            disabled={!isConnected}
+            className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-400"
+          >
+            发送
+          </button>
+        </div>
+        <div className="text-xs text-gray-500 mt-1">
+          {isConnected ? '已连接' : '连接中...'}
+        </div>
+      </div>
+    </div>
+  );
+};
+```
+
+3. **文档内聊天自动创建**
+
+在文档编辑页面加载时，检查是否存在文档聊天室，不存在则自动创建：
+
+```typescript
+// frontend/src/pages/DocumentEditor.tsx
+useEffect(() => {
+  const createOrGetDocChatRoom = async () => {
+    try {
+      // 尝试获取文档聊天室
+      const rooms = await apiClient.getChatRooms({ doc_id: documentId });
+      if (rooms.length === 0) {
+        // 创建文档聊天室
+        await apiClient.createChatRoom({
+          type: 'document',
+          doc_id: documentId,
+          name: `文档 ${documentId} 讨论`
+        });
+      }
+    } catch (error) {
+      console.error('Failed to setup document chat room:', error);
+    }
+  };
+  
+  if (documentId) {
+    createOrGetDocChatRoom();
+  }
+}, [documentId]);
+   ```
+
+### 步骤 2：通知系统增强
+
+#### 2.1 通知分类与过滤
+
+**数据库扩展**（如需要）：
+
+```sql
+-- 如果需要在数据库层面优化，可以添加索引
+CREATE INDEX idx_notification_user_type ON notification(user_id, type);
+CREATE INDEX idx_notification_created_at ON notification(created_at DESC);
+```
+
+**后端实现**：
+
+1. **扩展 NotificationController**
+   - 添加 `type` 查询参数支持
+   - 添加 `doc_id` 查询参数支持
+   - 添加 `start_date` 和 `end_date` 查询参数支持
+
+2. **前端实现**
+   - 通知类型筛选下拉框
+   - 日期范围选择器
+   - 文档筛选器
+
+#### 2.2 通知设置
+
+**数据库设计**：
+
+```sql
+CREATE TABLE notification_setting (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    notification_type VARCHAR(50) NOT NULL,  -- comment, task_assigned, etc.
+    email_enabled BOOLEAN DEFAULT true,
+    push_enabled BOOLEAN DEFAULT true,
+    in_app_enabled BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, notification_type)
+);
+```
+
+**后端实现**：
+
+- 创建 `NotificationSettingController`
+- 实现设置 CRUD 接口
+- 在发送通知时检查用户设置
+
+**前端实现**：
+
+- 通知设置页面
+- 各类通知的开关控制
+
+#### 2.3 实时通知推送
+
+**技术选型**：
+- 扩展现有的 `collab-service` 或创建独立的通知 WebSocket 服务
+- 使用 WebSocket 推送实时通知
+
+**实现步骤**：
+
+1. **后端 WebSocket 服务**
+   ```typescript
+   // 在 collab-service 中扩展或新建 notification-service
+   // 监听通知创建事件，推送给对应用户
+   ```
+
+2. **前端 WebSocket 客户端**
+   ```typescript
+   // 连接通知 WebSocket
+   // 接收实时通知并更新 UI
+   // 使用浏览器 Notification API 显示桌面通知
+   ```
+
+### 步骤 3：文档导入导出功能
+
+#### 3.1 Word 文档导入导出
+
+**技术选型建议**：
+- **C++ 后端**: 使用 `libdocx` 或通过 Node.js 服务调用 `mammoth`
+- **Node.js 服务**: 创建独立的文档转换服务，使用 `mammoth` (Word → HTML) 和 `docx` (HTML → Word)
+
+**实现步骤**：
+
+1. **创建文档转换服务**（可选，推荐）
+   ```bash
+   mkdir -p doc-converter-service
+   cd doc-converter-service
+   npm init -y
+   npm install mammoth docx pdf-lib marked
+   ```
+
+2. **后端接口实现**
+   - 创建 `DocumentImportExportController`
+   - 实现导入接口：接收文件上传，调用转换服务，创建文档
+   - 实现导出接口：获取文档内容，调用转换服务，返回文件
+
+3. **前端实现**
+   - 文件上传组件
+   - 导出按钮和下载功能
+
+#### 3.2 PDF 文档导入导出
+
+**技术选型**：
+- 使用 `pdf-lib` 进行 PDF 操作
+- 使用 `pdf-parse` 解析 PDF 文本
+
+#### 3.3 Markdown 导入导出
+
+**技术选型**：
+- 使用 `marked` 解析 Markdown
+- Tiptap 原生支持 Markdown
+
+### 步骤 4：文档版本控制
+
+#### 4.1 版本采集策略
+
+- `doc_version` 表记录 `doc_id`、`version_number`、`snapshot_url`、`delta_sha256`、`created_by`、`change_summary`、`created_at`。
+- 自动触发：发布、定时（例如每 30 分钟且有变更）、关键操作（导入、共享变更）。
+- 手动触发：编辑器中提供 “保存版本” 按钮，允许填写变更摘要。
+
+#### 4.2 API 与服务
+
+- `POST /api/docs/{id}/versions`: 创建版本（写 ACL 校验、防抖）。
+- `GET /api/docs/{id}/versions`: 列出版本，支持时间区间、创建人过滤。
+- `GET /api/docs/{id}/versions/{versionId}`: 获取单个版本详情、下载快照。
+- `POST /api/docs/{id}/versions/{versionId}/restore`: 回滚到指定版本，并自动生成一个新的版本记录（记录来源）。
+- 后端可与 Yjs 的 `encodeStateAsUpdate` 结合，存储增量（delta）与完整快照混合策略。
+
+#### 4.3 前端交互
+
+- 版本时间线组件：展示版本号、创建人、时间、摘要、标签（自动/手动）。
+- 版本对比视图：左右对照或行内 diff，可复用 Tiptap diff 扩展或将 Yjs 更新转换为可读 diff。
+- 恢复预览：点击某个版本后在只读模式加载快照，确认后再真正恢复。
+- 版本清理策略提示：显示当前版本占用容量、自动清理规则。
+
+### 步骤 5：用户管理
+
+#### 5.1 用户列表管理
+
+- **目标**：实现需求文档 6.2 所述的“用户列表管理”，支持运维/管理人员按条件查看与维护用户。
+- **后端**：`GET /api/admin/users`（分页、关键字、状态、角色筛选）+ `PATCH /api/admin/users/{id}`（状态修改、备注）；提供导出接口（CSV）。
+- **前端**：表格视图、筛选器、批量操作、导出按钮；支持列配置与查询条件持久化。
+
+#### 5.2 用户权限调整
+
+- **目标**：满足“用户权限调整”能力，配合现有 RBAC/ACL。
+- **后端**：提供角色分配接口 `POST /api/admin/users/{id}/roles`、权限矩阵查询接口；所有变更写入审计日志。
+- **前端**：角色切换抽屉、权限矩阵可视化，变更需二次确认并提示影响范围。
+
+#### 5.3 用户行为分析
+
+- **指标采集**：登录次数、在线时长、文档编辑/评论次数、任务完成率等。
+- **后端**：定期跑批或实时写入 `user_activity_daily` 表；提供统计 API（按时间、角色、团队维度聚合）。
+- **前端**：仪表盘/图表展示（折线、柱状），支持导出报表，辅助产品评估活跃度。
+
+#### 5.4 用户满意度调查
+
+- **收集**：在关键操作后或定期弹出问卷；也可在“帮助中心”提供反馈入口。
+- **后端**：`POST /api/feedback` 写入问卷结果，`GET /api/feedback/stat` 汇总满意度得分、常见问题。
+- **前端**：多选/量表题组件、文本反馈、提交成功提示；可选邮件/通知提醒管理员查看。
+
+---
+
+## 📝 开发建议
+
+### 优先级建议
+
+0. **文档权限管理**: ACL接口实现,优先级最高
+1. **实时通讯模块**：核心协作功能，提升团队沟通效率，优先级最高
+2. **通知系统增强**：完善现有通知功能，提升用户体验，优先级高
+3. **文档导入导出**：提升用户体验，优先级高
+4. **文档版本控制**：保障文档可追溯与合规审计，优先级高
+5. **用户管理**：支撑企业级治理与安全策略，优先级高
+
+### 技术选型建议
+
+- **实时通讯**：
+  - WebSocket 服务：可以扩展现有的 `collab-service`，或创建独立的 `chat-service`
+  - 消息存储：使用 PostgreSQL 存储消息历史，Redis 可选用于在线状态和临时消息缓存
+  - 视频会议：Jitsi Meet 开源免费，易于集成；Agora 功能更强大但需要付费
+- **文档转换**：考虑创建独立的 Node.js 服务，便于维护和扩展
+- **版本控制**：保留 Yjs 快照，必要时引入 CRDT diff、tree-sitter 或 Alpha API 进行差异计算
+- **用户管理**：RBAC 模型可先用自研表结构，若需更灵活可探索 OPA / Casbin 等策略引擎
+
+### 测试建议
+
+- **实时通讯**：
+  - 测试多用户同时在线聊天
+  - 测试消息发送、接收、已读状态
+  - 测试文件上传和下载
+  - 测试 WebSocket 断线重连
+  - 测试视频会议功能（如实现）
+- **通知系统**：
+  - 测试实时通知推送
+  - 测试通知过滤和分类
+  - 测试通知设置生效
+  - 测试浏览器推送通知
+- **导入导出**：测试各种格式的文档导入导出
+- **PWA**：在真实移动设备上测试
+- **监控和日志**：验证数据收集和查询
+- **文档版本控制**：测试自动/手动版本创建、版本 diff、回滚、清理策略
+- **用户管理**：测试角色权限、账号启用/禁用、邀请流程、审计日志完整性
+
+---
+
+## 🔗 相关文档
+
+- [项目启动指南](./GUIDE-01-项目启动指南.md)
+- [总体设计文档](./ARCH-01-总体设计.md)
+- [第三阶段开发指南](./PHASE-03-协作功能开发指南.md)
+- [第四阶段数据库变更分析](./DEV-11-第四阶段数据库变更分析.md) - 详细的数据库变更说明
+
+---
+
+## 📊 数据库变更
+
+第四阶段需要新增 **5个表** 和 **多个索引**，详细说明请参考：
+- [第四阶段数据库变更分析](./第四阶段数据库变更分析.md)
+- 迁移脚本：`cpp-service/sql/migration_phase4.sql`
+
+**快速执行迁移**：
+```bash
+psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/migration_phase4.sql
+```
+
+---
+
+## 📖 详细实现指南
+
+### 实时通讯详细实现
 
 **数据库设计**：
 
@@ -1184,644 +1758,6 @@ void ChatController::markMessageRead(const HttpRequestPtr& req, std::function<vo
 - 包含完整的错误处理和权限验证
 - 辅助函数 `createRoomInDb` 和 `addMembersToRoom` 用于代码复用
 
-**API 设计详情**：
-
-- **POST /api/chat/rooms** - 创建聊天室
-  - 请求体：`{ "name": "群聊名称", "type": "group|direct|document", "doc_id": 123, "member_ids": [1, 2, 3] }`
-  - 响应：`{ "id": 1, "name": "...", "type": "...", "created_at": "..." }`
-  - 实现要点：
-    - 验证用户权限
-    - 创建聊天室记录
-    - 自动添加创建者和指定成员到 `chat_room_member`
-    - 如果是文档聊天室，验证文档访问权限
-
-- **GET /api/chat/rooms** - 获取用户聊天室列表
-  - 查询参数：`?page=1&page_size=20`
-  - 响应：`{ "rooms": [...], "page": 1, "page_size": 20, "total": 10 }`
-  - 实现要点：
-    - 查询用户参与的所有聊天室
-    - 包含最后一条消息预览
-    - 包含未读消息数量
-    - 按最后消息时间排序
-
-- **POST /api/chat/rooms/:id/members** - 添加成员
-  - 请求体：`{ "user_ids": [4, 5] }`
-  - 响应：`{ "message": "Members added successfully" }`
-  - 实现要点：
-    - 验证当前用户是聊天室成员
-    - 批量插入成员记录
-    - 发送系统消息通知新成员
-
-- **GET /api/chat/rooms/:id/messages** - 获取消息历史
-  - 查询参数：`?page=1&page_size=50&before_id=100`（分页和游标）
-  - 响应：`{ "messages": [...], "has_more": true }`
-  - 实现要点：
-    - 验证用户是聊天室成员
-    - 支持游标分页（before_id）和偏移分页
-    - 包含发送者信息（nickname, avatar_url）
-    - 包含已读状态
-
-- **POST /api/chat/rooms/:id/messages** - 发送消息
-  - 请求体：`{ "content": "消息内容", "message_type": "text|file|image", "file_url": "...", "reply_to": 123 }`
-  - 响应：`{ "id": 456, "content": "...", "created_at": "..." }`
-  - 实现要点：
-    - 验证用户是聊天室成员
-    - 插入消息记录
-    - 通过 WebSocket 广播给所有成员
-    - 创建未读记录（除了发送者）
-
-- **POST /api/chat/messages/:id/read** - 标记消息已读
-  - 请求体：无
-  - 响应：`{ "message": "Marked as read" }`
-  - 实现要点：
-    - 插入或更新 `chat_message_read` 记录
-    - 更新 `chat_room_member.last_read_at`
-
-2. **WebSocket 聊天服务实现**（在 `collab-service` 中扩展）
-
-```typescript
-// collab-service/src/chat-handler.ts
-import { WebSocket } from 'ws';
-import { v4 as uuidv4 } from 'uuid';
-
-interface ChatMessage {
-  type: 'message' | 'typing' | 'read' | 'join' | 'leave';
-  room_id: number;
-  user_id: number;
-  content?: string;
-  message_id?: number;
-}
-
-class ChatHandler {
-  private rooms: Map<number, Set<WebSocket>> = new Map();
-  private userSockets: Map<number, Set<WebSocket>> = new Map();
-
-  handleConnection(ws: WebSocket, userId: number) {
-    // 存储用户连接
-    if (!this.userSockets.has(userId)) {
-      this.userSockets.set(userId, new Set());
-    }
-    this.userSockets.get(userId)!.add(ws);
-
-    ws.on('message', async (data: string) => {
-      try {
-        const msg: ChatMessage = JSON.parse(data);
-        await this.handleMessage(ws, userId, msg);
-      } catch (error) {
-        ws.send(JSON.stringify({ error: 'Invalid message format' }));
-      }
-    });
-
-    ws.on('close', () => {
-      this.handleDisconnection(ws, userId);
-    });
-  }
-
-  private async handleMessage(ws: WebSocket, userId: number, msg: ChatMessage) {
-    switch (msg.type) {
-      case 'join':
-        await this.joinRoom(ws, userId, msg.room_id);
-        break;
-      case 'message':
-        await this.broadcastMessage(userId, msg);
-        break;
-      case 'typing':
-        this.broadcastTyping(msg.room_id, userId);
-        break;
-      case 'read':
-        await this.markAsRead(userId, msg.message_id!);
-        break;
-    }
-  }
-
-  private async joinRoom(ws: WebSocket, userId: number, roomId: number) {
-    if (!this.rooms.has(roomId)) {
-      this.rooms.set(roomId, new Set());
-    }
-    this.rooms.get(roomId)!.add(ws);
-    
-    // 通知其他成员
-    this.broadcastToRoom(roomId, {
-      type: 'join',
-      room_id: roomId,
-      user_id: userId
-    }, ws);
-  }
-
-  private async broadcastMessage(userId: number, msg: ChatMessage) {
-    // 1. 保存消息到数据库（通过 HTTP API 调用 cpp-service）
-    const response = await fetch(`http://localhost:8080/api/chat/rooms/${msg.room_id}/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${getUserToken(userId)}`
-      },
-      body: JSON.stringify({
-        content: msg.content,
-        message_type: 'text'
-      })
-    });
-    
-    const savedMsg = await response.json();
-    
-    // 2. 广播给房间所有成员
-    this.broadcastToRoom(msg.room_id, {
-      type: 'message',
-      ...savedMsg
-    });
-  }
-
-  private broadcastToRoom(roomId: number, data: any, exclude?: WebSocket) {
-    const room = this.rooms.get(roomId);
-    if (!room) return;
-    
-    const message = JSON.stringify(data);
-    room.forEach(ws => {
-      if (ws !== exclude && ws.readyState === WebSocket.OPEN) {
-        ws.send(message);
-      }
-    });
-  }
-}
-```
-
-**前端实现**：
-
-1. **WebSocket 客户端封装** (`frontend/src/hooks/useChatWebSocket.ts`)
-
-   ```typescript
-import { useEffect, useRef, useState } from 'react';
-
-interface ChatMessage {
-  id: number;
-  room_id: number;
-  sender_id: number;
-  content: string;
-  message_type: string;
-  created_at: string;
-}
-
-export function useChatWebSocket(roomId: number | null, userId: number) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    if (!roomId) return;
-
-    const ws = new WebSocket(`ws://localhost:3001/chat?room_id=${roomId}&user_id=${userId}`);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setIsConnected(true);
-      // 发送加入房间消息
-      ws.send(JSON.stringify({
-        type: 'join',
-        room_id: roomId,
-        user_id: userId
-      }));
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'message') {
-        setMessages(prev => [...prev, data]);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-      // 自动重连逻辑
-      setTimeout(() => {
-        if (roomId) {
-          // 重新连接
-        }
-      }, 3000);
-    };
-
-    return () => {
-      ws.close();
-    };
-  }, [roomId, userId]);
-
-  const sendMessage = (content: string) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({
-        type: 'message',
-        room_id: roomId,
-        user_id: userId,
-        content: content
-      }));
-    }
-  };
-
-  return { messages, isConnected, sendMessage };
-}
-```
-
-2. **聊天组件实现** (`frontend/src/components/chat/ChatWindow.tsx`)
-
-```typescript
-import React, { useState, useRef, useEffect } from 'react';
-import { useChatWebSocket } from '../../hooks/useChatWebSocket';
-
-interface ChatWindowProps {
-  roomId: number;
-  userId: number;
-}
-
-export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId, userId }) => {
-  const [input, setInput] = useState('');
-  const { messages, isConnected, sendMessage } = useChatWebSocket(roomId, userId);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const handleSend = () => {
-    if (input.trim()) {
-      sendMessage(input);
-      setInput('');
-    }
-  };
-
-  return (
-    <div className="flex flex-col h-full">
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`mb-4 ${msg.sender_id === userId ? 'text-right' : 'text-left'}`}
-          >
-            <div className={`inline-block p-2 rounded ${
-              msg.sender_id === userId ? 'bg-blue-500 text-white' : 'bg-gray-200'
-            }`}>
-              {msg.content}
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {new Date(msg.created_at).toLocaleTimeString()}
-            </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* 输入框 */}
-      <div className="border-t p-4">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            className="flex-1 border rounded px-3 py-2"
-            placeholder="输入消息..."
-          />
-          <button
-            onClick={handleSend}
-            disabled={!isConnected}
-            className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-gray-400"
-          >
-            发送
-          </button>
-        </div>
-        <div className="text-xs text-gray-500 mt-1">
-          {isConnected ? '已连接' : '连接中...'}
-        </div>
-      </div>
-    </div>
-  );
-};
-```
-
-3. **文档内聊天自动创建**
-
-在文档编辑页面加载时，检查是否存在文档聊天室，不存在则自动创建：
-
-```typescript
-// frontend/src/pages/DocumentEditor.tsx
-useEffect(() => {
-  const createOrGetDocChatRoom = async () => {
-    try {
-      // 尝试获取文档聊天室
-      const rooms = await apiClient.getChatRooms({ doc_id: documentId });
-      if (rooms.length === 0) {
-        // 创建文档聊天室
-        await apiClient.createChatRoom({
-          type: 'document',
-          doc_id: documentId,
-          name: `文档 ${documentId} 讨论`
-        });
-      }
-    } catch (error) {
-      console.error('Failed to setup document chat room:', error);
-    }
-  };
-  
-  if (documentId) {
-    createOrGetDocChatRoom();
-  }
-}, [documentId]);
-   ```
-
-### 步骤 2：通知系统增强
-
-#### 2.1 通知分类与过滤
-
-**数据库扩展**（如需要）：
-
-```sql
--- 如果需要在数据库层面优化，可以添加索引
-CREATE INDEX idx_notification_user_type ON notification(user_id, type);
-CREATE INDEX idx_notification_created_at ON notification(created_at DESC);
-```
-
-**后端实现**：
-
-1. **扩展 NotificationController**
-   - 添加 `type` 查询参数支持
-   - 添加 `doc_id` 查询参数支持
-   - 添加 `start_date` 和 `end_date` 查询参数支持
-
-2. **前端实现**
-   - 通知类型筛选下拉框
-   - 日期范围选择器
-   - 文档筛选器
-
-#### 2.2 通知设置
-
-**数据库设计**：
-
-```sql
-CREATE TABLE notification_setting (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-    notification_type VARCHAR(50) NOT NULL,  -- comment, task_assigned, etc.
-    email_enabled BOOLEAN DEFAULT true,
-    push_enabled BOOLEAN DEFAULT true,
-    in_app_enabled BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, notification_type)
-);
-```
-
-**后端实现**：
-
-- 创建 `NotificationSettingController`
-- 实现设置 CRUD 接口
-- 在发送通知时检查用户设置
-
-**前端实现**：
-
-- 通知设置页面
-- 各类通知的开关控制
-
-#### 2.3 实时通知推送
-
-**技术选型**：
-- 扩展现有的 `collab-service` 或创建独立的通知 WebSocket 服务
-- 使用 WebSocket 推送实时通知
-
-**实现步骤**：
-
-1. **后端 WebSocket 服务**
-   ```typescript
-   // 在 collab-service 中扩展或新建 notification-service
-   // 监听通知创建事件，推送给对应用户
-   ```
-
-2. **前端 WebSocket 客户端**
-   ```typescript
-   // 连接通知 WebSocket
-   // 接收实时通知并更新 UI
-   // 使用浏览器 Notification API 显示桌面通知
-   ```
-
-### 步骤 3：文档导入导出功能
-
-#### 3.1 Word 文档导入导出
-
-**技术选型建议**：
-- **C++ 后端**: 使用 `libdocx` 或通过 Node.js 服务调用 `mammoth`
-- **Node.js 服务**: 创建独立的文档转换服务，使用 `mammoth` (Word → HTML) 和 `docx` (HTML → Word)
-
-**实现步骤**：
-
-1. **创建文档转换服务**（可选，推荐）
-   ```bash
-   mkdir -p doc-converter-service
-   cd doc-converter-service
-   npm init -y
-   npm install mammoth docx pdf-lib marked
-   ```
-
-2. **后端接口实现**
-   - 创建 `DocumentImportExportController`
-   - 实现导入接口：接收文件上传，调用转换服务，创建文档
-   - 实现导出接口：获取文档内容，调用转换服务，返回文件
-
-3. **前端实现**
-   - 文件上传组件
-   - 导出按钮和下载功能
-
-#### 3.2 PDF 文档导入导出
-
-**技术选型**：
-- 使用 `pdf-lib` 进行 PDF 操作
-- 使用 `pdf-parse` 解析 PDF 文本
-
-#### 3.3 Markdown 导入导出
-
-**技术选型**：
-- 使用 `marked` 解析 Markdown
-- Tiptap 原生支持 Markdown
-
-### 步骤 4：监控与告警
-
-#### 4.1 Prometheus Metrics
-
-在后端添加 Prometheus metrics：
-
-```cpp
-// 使用 drogon 的 metrics 支持或集成 prometheus-cpp
-// 暴露 /metrics 端点
-```
-
-#### 4.2 Grafana 仪表板
-
-创建 Grafana 仪表板配置，监控：
-- 请求速率
-- 错误率
-- 响应时间
-- 数据库连接池状态
-- 系统资源使用
-
-### 步骤 5：集中日志
-
-#### 5.1 结构化日志
-
-后端使用结构化日志格式（JSON）：
-
-```cpp
-// 使用 drogon 的日志系统，输出 JSON 格式
-LOG_INFO << json::value({
-    {"level", "info"},
-    {"message", "Request processed"},
-    {"timestamp", getCurrentTime()}
-});
-```
-
-#### 5.2 Loki 集成
-
-配置 Loki 收集日志：
-
-```yaml
-# docker-compose.yml
-loki:
-  image: grafana/loki:latest
-  ports:
-    - "3100:3100"
-  volumes:
-    - ./loki-config.yaml:/etc/loki/local-config.yaml
-```
-
-### 步骤 6：移动端支持（PWA）
-
-#### 6.1 Service Worker 配置
-
-在 `frontend/public` 目录创建 `sw.js`：
-
-```javascript
-// sw.js
-const CACHE_NAME = 'codox-v1';
-const urlsToCache = [
-  '/',
-  '/static/css/main.css',
-  '/static/js/main.js'
-];
-
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(urlsToCache))
-  );
-});
-
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => response || fetch(event.request))
-  );
-});
-```
-
-#### 6.2 Web App Manifest
-
-创建 `frontend/public/manifest.json`：
-
-```json
-{
-  "name": "Codox - 协作文档系统",
-  "short_name": "Codox",
-  "description": "多人在线协作文档系统",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
-  "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ]
-}
-```
-
-#### 6.3 响应式优化
-
-- 使用 Tailwind CSS 响应式类
-- 优化移动端编辑器体验
-- 添加触摸手势支持
-
----
-
-## 📝 开发建议
-
-### 优先级建议
-
-1. **实时通讯模块**：核心协作功能，提升团队沟通效率，优先级最高
-2. **通知系统增强**：完善现有通知功能，提升用户体验，优先级高
-3. **文档导入导出**：提升用户体验，优先级高
-4. **监控与告警**：生产环境必需，优先级高
-5. **集中日志**：便于问题排查，优先级高
-6. **移动端支持**：扩展使用场景，优先级中
-
-### 技术选型建议
-
-- **实时通讯**：
-  - WebSocket 服务：可以扩展现有的 `collab-service`，或创建独立的 `chat-service`
-  - 消息存储：使用 PostgreSQL 存储消息历史，Redis 可选用于在线状态和临时消息缓存
-  - 视频会议：Jitsi Meet 开源免费，易于集成；Agora 功能更强大但需要付费
-- **文档转换**：考虑创建独立的 Node.js 服务，便于维护和扩展
-- **监控**：Prometheus + Grafana 是成熟方案
-- **日志**：Loki 轻量级，ELK 功能更强大但资源消耗更大
-
-### 测试建议
-
-- **实时通讯**：
-  - 测试多用户同时在线聊天
-  - 测试消息发送、接收、已读状态
-  - 测试文件上传和下载
-  - 测试 WebSocket 断线重连
-  - 测试视频会议功能（如实现）
-- **通知系统**：
-  - 测试实时通知推送
-  - 测试通知过滤和分类
-  - 测试通知设置生效
-  - 测试浏览器推送通知
-- **导入导出**：测试各种格式的文档导入导出
-- **PWA**：在真实移动设备上测试
-- **监控和日志**：验证数据收集和查询
-
----
-
-## 🔗 相关文档
-
-- [项目启动指南](./GUIDE-01-项目启动指南.md)
-- [总体设计文档](./ARCH-01-总体设计.md)
-- [第三阶段开发指南](./PHASE-03-协作功能开发指南.md)
-- [第四阶段数据库变更分析](./DEV-11-第四阶段数据库变更分析.md) - 详细的数据库变更说明
-
----
-
-## 📊 数据库变更
-
-第四阶段需要新增 **5个表** 和 **多个索引**，详细说明请参考：
-- [第四阶段数据库变更分析](./第四阶段数据库变更分析.md)
-- 迁移脚本：`cpp-service/sql/migration_phase4.sql`
-
-**快速执行迁移**：
-```bash
-psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/migration_phase4.sql
-```
-
----
-
-## 📖 详细实现指南
-
 ### 1. 实时通讯模块详细实现
 
 #### 1.1 文件共享功能
@@ -2054,68 +1990,6 @@ export function useNotificationWebSocket(userId: number) {
 }
 ```
 
-### 3. 监控与告警详细实现
-
-#### 3.1 Prometheus Metrics 集成
-
-**安装依赖**：
-
-```bash
-# 使用 prometheus-cpp
-git clone https://github.com/jupp0r/prometheus-cpp.git
-cd prometheus-cpp
-mkdir build && cd build
-cmake .. && make && sudo make install
-```
-
-**实现 Metrics 端点** (`cpp-service/src/controllers/MetricsController.h`)：
-
-```cpp
-#pragma once
-#include <drogon/HttpController.h>
-#include <prometheus/registry.h>
-#include <prometheus/counter.h>
-#include <prometheus/histogram.h>
-
-class MetricsController : public drogon::HttpController<MetricsController> {
-public:
-    MetricsController() {
-        auto& registry = prometheus::BuildRegistry();
-        requestCounter = &registry.AddCounter({}, "http_requests_total", "Total HTTP requests");
-        requestDuration = &registry.AddHistogram({}, "http_request_duration_seconds", "Request duration");
-    }
-
-    METHOD_LIST_BEGIN
-    ADD_METHOD_TO(MetricsController::getMetrics, "/metrics", Get);
-    METHOD_LIST_END
-
-    void getMetrics(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
-
-private:
-    prometheus::Counter* requestCounter;
-    prometheus::Histogram* requestDuration;
-};
-```
-
-**实现** (`MetricsController.cc`)：
-
-```cpp
-#include "MetricsController.h"
-#include <prometheus/text_serializer.h>
-
-void MetricsController::getMetrics(const HttpRequestPtr& req, 
-                                    std::function<void(const HttpResponsePtr&)>&& callback) {
-    auto& registry = prometheus::BuildRegistry();
-    prometheus::TextSerializer serializer;
-    std::string metrics = serializer.Serialize(registry.Collect());
-    
-    auto resp = HttpResponse::newHttpResponse();
-    resp->setBody(metrics);
-    resp->setContentTypeCode(CT_TEXT_PLAIN);
-    callback(resp);
-}
-```
-
 #### 3.2 健康检查增强
 
 **扩展 HealthController**：
@@ -2154,226 +2028,6 @@ void HealthController::health(const HttpRequestPtr& req, ...) {
     resp->setStatusCode(health["status"] == "ok" ? k200OK : k503ServiceUnavailable);
     callback(resp);
 }
-```
-
-### 4. 集中日志详细实现
-
-#### 4.1 结构化日志输出
-
-**创建日志工具类** (`cpp-service/src/utils/StructuredLogger.h`)：
-
-```cpp
-#pragma once
-#include <json/json.h>
-#include <drogon/drogon.h>
-#include <string>
-
-class StructuredLogger {
-public:
-    static void log(const std::string& level, const std::string& message, 
-                    const Json::Value& fields = Json::Value()) {
-        Json::Value logEntry;
-        logEntry["timestamp"] = getCurrentTimestamp();
-        logEntry["level"] = level;
-        logEntry["message"] = message;
-        logEntry["service"] = "cpp-service";
-        
-        // 添加自定义字段
-        if (!fields.empty()) {
-            for (const auto& key : fields.getMemberNames()) {
-                logEntry[key] = fields[key];
-            }
-        }
-        
-        // 输出 JSON 格式日志
-        Json::StreamWriterBuilder builder;
-        std::string jsonStr = Json::writeString(builder, logEntry);
-        
-        if (level == "error") {
-            LOG_ERROR << jsonStr;
-        } else if (level == "warn") {
-            LOG_WARN << jsonStr;
-        } else {
-            LOG_INFO << jsonStr;
-        }
-    }
-};
-```
-
-**使用示例**：
-
-```cpp
-StructuredLogger::log("info", "User logged in", Json::Value({
-    {"user_id", userId},
-    {"ip_address", req->getPeerAddr().toIp()}
-}));
-```
-
-#### 4.2 Loki 集成配置
-
-**docker-compose.yml**：
-
-```yaml
-loki:
-  image: grafana/loki:latest
-  ports:
-    - "3100:3100"
-  volumes:
-    - ./loki-config.yaml:/etc/loki/local-config.yaml
-    - loki-data:/loki
-  command: -config.file=/etc/loki/local-config.yaml
-
-promtail:
-  image: grafana/promtail:latest
-  volumes:
-    - ./promtail-config.yaml:/etc/promtail/config.yml
-    - /var/log:/var/log:ro
-  command: -config.file=/etc/promtail/config.yml
-```
-
-**promtail-config.yaml**：
-
-```yaml
-server:
-  http_listen_port: 9080
-  grpc_listen_port: 0
-
-positions:
-  filename: /tmp/positions.yaml
-
-clients:
-  - url: http://loki:3100/loki/api/v1/push
-
-scrape_configs:
-  - job_name: cpp-service
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: cpp-service
-          __path__: /var/log/cpp-service/*.log
-```
-
-### 5. 移动端支持（PWA）详细实现
-
-#### 5.1 Service Worker 完整实现
-
-**frontend/public/sw.js**：
-
-```javascript
-const CACHE_NAME = 'codox-v1';
-const urlsToCache = [
-  '/',
-  '/static/css/main.css',
-  '/static/js/main.js',
-  '/manifest.json'
-];
-
-// 安装 Service Worker
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(urlsToCache))
-      .then(() => self.skipWaiting())
-  );
-});
-
-// 激活 Service Worker
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
-
-// 拦截网络请求
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // 缓存命中，返回缓存
-        if (response) {
-          return response;
-        }
-        // 缓存未命中，发起网络请求
-        return fetch(event.request).then((response) => {
-          // 只缓存 GET 请求
-          if (event.request.method !== 'GET') {
-            return response;
-          }
-          // 克隆响应
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-          return response;
-        });
-      })
-      .catch(() => {
-        // 网络失败，返回离线页面
-        return caches.match('/offline.html');
-      })
-  );
-});
-```
-
-**注册 Service Worker** (`frontend/src/index.tsx`)：
-
-```typescript
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then((registration) => {
-        console.log('SW registered:', registration);
-      })
-      .catch((error) => {
-        console.log('SW registration failed:', error);
-      });
-  });
-}
-```
-
-#### 5.2 响应式优化
-
-**移动端编辑器适配**：
-
-```typescript
-// 使用 Tailwind 响应式类
-<div className="editor-container">
-  <EditorContent 
-    editor={editor}
-    className="
-      prose prose-sm 
-      sm:prose-base 
-      md:prose-lg 
-      max-w-none
-      p-4 sm:p-6 md:p-8
-    "
-  />
-</div>
-```
-
-**触摸手势支持**：
-
-```typescript
-import { useSwipeable } from 'react-swipeable';
-
-const DocumentView = () => {
-  const handlers = useSwipeable({
-    onSwipedLeft: () => navigateToNextDocument(),
-    onSwipedRight: () => navigateToPrevDocument(),
-  });
-
-  return <div {...handlers}>文档内容</div>;
-};
-```
 
 ---
 

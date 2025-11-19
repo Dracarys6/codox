@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
-import { Document } from '../types';
+import { Document, DocumentVersion } from '../types';
 import { DocumentEditor } from '../components/DocumentEditor';
 import { CommentPanel } from '../components/CommentPanel';
 import { TaskPanel } from '../components/TaskPanel';
@@ -23,6 +23,9 @@ export function EditorPage() {
   const [activeTab, setActiveTab] = useState<'info' | 'comments' | 'tasks' | 'acl' | 'chat'>('info');
   const [isSaving, setIsSaving] = useState(false);
   const saveRequestRef = useRef<(() => Promise<void>) | null>(null);
+  const [versions, setVersions] = useState<DocumentVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id || isNaN(docId) || docId <= 0) {
@@ -30,6 +33,7 @@ export function EditorPage() {
       return;
     }
     loadDocument(docId);
+    loadVersions(docId);
   }, [docId, id, navigate]);
 
   const loadDocument = async (currentId: number) => {
@@ -76,6 +80,19 @@ export function EditorPage() {
     } catch (err: any) {
       alert(err.response?.data?.error || '保存失败，请稍后再试');
       setIsSaving(false);
+    }
+  };
+
+  const loadVersions = async (currentId: number) => {
+    setVersionsLoading(true);
+    setVersionsError(null);
+    try {
+      const response = await apiClient.getDocumentVersions(currentId);
+      setVersions(response.versions || []);
+    } catch (err: any) {
+      setVersionsError(err.response?.data?.error || '加载版本历史失败');
+    } finally {
+      setVersionsLoading(false);
     }
   };
 
@@ -310,22 +327,80 @@ export function EditorPage() {
                     </div>
 
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-900 mb-3">版本历史</h3>
-                      <div className="space-y-2 text-sm">
-                        <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 transition border border-gray-100">
-                          <div className="font-medium text-gray-900">当前版本</div>
-                          <div className="text-xs text-gray-500">今天</div>
-                        </button>
-                        <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 transition border border-gray-100">
-                          <div className="font-medium text-gray-900">版本 2</div>
-                          <div className="text-xs text-gray-500">昨天</div>
-                        </button>
-                        <button className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 transition border border-gray-100">
-                          <div className="font-medium text-gray-900">版本 1</div>
-                          <div className="text-xs text-gray-500">上周</div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-gray-900">版本历史</h3>
+                        <button
+                          onClick={() => loadVersions(docId)}
+                          className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+                          disabled={versionsLoading}
+                        >
+                          {versionsLoading ? (
+                            <>
+                              <i className="fa fa-spinner fa-spin"></i>
+                              刷新中
+                            </>
+                          ) : (
+                            <>
+                              <i className="fa fa-refresh"></i>
+                              刷新
+                            </>
+                          )}
                         </button>
                       </div>
-                      <button className="mt-3 text-sm text-primary hover:text-primary/80">查看全部历史</button>
+
+                      {versionsError && (
+                        <div className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                          {versionsError}
+                        </div>
+                      )}
+
+                      {versionsLoading && versions.length === 0 ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+                          <i className="fa fa-spinner fa-spin"></i>
+                          正在加载版本历史...
+                        </div>
+                      ) : versions.length > 0 ? (
+                        <div className="space-y-2 text-sm">
+                          {versions.slice(0, 3).map((version, index) => (
+                            <button
+                              key={version.id}
+                              className="w-full text-left px-3 py-2 rounded-lg hover:bg-gray-50 transition border border-gray-100 flex flex-col gap-1"
+                            >
+                              <div className="flex items-center justify-between text-gray-900 font-medium">
+                                <span>{index === 0 ? '最新版本' : `版本 #${version.id}`}</span>
+                                <span className="text-xs text-gray-400">
+                                  {new Date(version.created_at).toLocaleDateString('zh-CN', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                              <div className="flex items-center text-xs text-gray-500 gap-2 flex-wrap">
+                                <span>
+                                  <i className="fa fa-user mr-1"></i>
+                                  创建者 ID: {version.created_by ?? '未知'}
+                                </span>
+                                <span>
+                                  <i className="fa fa-database mr-1"></i>
+                                  {version.size_bytes
+                                    ? `${(version.size_bytes / 1024).toFixed(1)} KB`
+                                    : '大小未知'}
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-4">
+                          暂无发布版本，保存或发布后可在此查看历史。
+                        </div>
+                      )}
+
+                      {versions.length > 3 && (
+                        <p className="mt-3 text-xs text-gray-400">
+                          显示最近 3 个版本，其余版本请前往版本管理查看。
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}

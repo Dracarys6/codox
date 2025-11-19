@@ -17,14 +17,18 @@ export function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await apiClient.login({
+      await apiClient.login({
         account: email,
         password: password,
       });
 
-      // 登录成功，更新AuthContext
-      login(response.user);
-      
+      // 登录成功后获取完整的用户资料（包含 profile 信息）
+      const userData = await apiClient.getCurrentUser();
+      localStorage.setItem('user', JSON.stringify(userData));
+
+      // 更新 AuthContext
+      login(userData);
+
       // 跳转到首页
       navigate('/home');
     } catch (error: any) {
