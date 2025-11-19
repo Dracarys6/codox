@@ -18,6 +18,17 @@ import {
     VersionListResponse,
     PublishVersionRequest,
     PublishVersionResponse,
+    ChatRoom,
+    ChatRoomListParams,
+    ChatRoomListResponse,
+    CreateChatRoomRequest,
+    ChatMessageListResponse,
+    SendChatMessageRequest,
+    ChatMessage,
+    NotificationListResponse,
+    NotificationFilterParams,
+    NotificationSetting,
+    UpdateNotificationSettingRequest,
 } from '../types';
 
 // 开发环境：使用相对路径利用 Vite 代理
@@ -276,11 +287,38 @@ class ApiClient {
     }
 
     /**
-     * 保存快照
+     * 下载快照文件（通过后端代理）
+     */
+    async downloadSnapshot(docId: number): Promise<ArrayBuffer> {
+        const response = await this.client.get(
+            `/collab/snapshot/${docId}/download`,
+            { 
+                responseType: 'arraybuffer',
+                headers: {
+                    'Accept': 'application/octet-stream'
+                }
+            }
+        );
+        return response.data as ArrayBuffer;
+    }
+
+    /**
+     * 上传快照文件到 MinIO
+     */
+    async uploadSnapshot(docId: number, data: { data: string; filename?: string }): Promise<{ snapshot_url: string; message: string }> {
+        const response = await this.client.post<{ snapshot_url: string; message: string }>(
+            `/collab/upload/${docId}`,
+            data
+        );
+        return response.data;
+    }
+
+    /**
+     * 保存快照元数据（使用 JWT 认证）
      */
     async saveSnapshot(docId: number, data: { snapshot_url: string; sha256: string; size_bytes: number }): Promise<{ version_id: number; message: string }> {
         const response = await this.client.post<{ version_id: number; message: string }>(
-            `/collab/snapshot/${docId}`,
+            `/collab/snapshot/${docId}/save`,
             data
         );
         return response.data;
@@ -351,8 +389,8 @@ class ApiClient {
     /**
      * 获取通知列表
      */
-    async getNotifications(params?: { page?: number; page_size?: number; unread_only?: boolean }): Promise<{ notifications: any[]; total: number }> {
-        const response = await this.client.get<{ notifications: any[]; total: number }>('/notifications', { params });
+    async getNotifications(params?: NotificationFilterParams): Promise<NotificationListResponse> {
+        const response = await this.client.get<NotificationListResponse>('/notifications', { params });
         return response.data;
     }
 
@@ -374,6 +412,22 @@ class ApiClient {
         return response.data;
     }
 
+    /**
+     * 获取通知设置
+     */
+    async getNotificationSettings(): Promise<NotificationSetting[]> {
+        const response = await this.client.get<NotificationSetting[]>('/notification-settings');
+        return response.data;
+    }
+
+    /**
+     * 更新指定通知类型的设置
+     */
+    async updateNotificationSetting(type: string, data: UpdateNotificationSettingRequest): Promise<NotificationSetting> {
+        const response = await this.client.put<NotificationSetting>(`/notification-settings/${type}`, data);
+        return response.data;
+    }
+
     // ========== 搜索相关 API ==========
 
     /**
@@ -383,6 +437,63 @@ class ApiClient {
         const response = await this.client.get<{ hits: any[]; total: number }>('/search', {
             params: { q: query, ...params },
         });
+        return response.data;
+    }
+
+    // ========== 聊天相关 API ==========
+
+    /**
+     * 获取聊天室列表
+     */
+    async getChatRooms(params?: ChatRoomListParams): Promise<ChatRoomListResponse> {
+        const response = await this.client.get<ChatRoomListResponse>('/chat/rooms', { params });
+        return response.data;
+    }
+
+    /**
+     * 创建聊天室
+     */
+    async createChatRoom(data: CreateChatRoomRequest): Promise<ChatRoom> {
+        const response = await this.client.post<ChatRoom>('/chat/rooms', data);
+        return response.data;
+    }
+
+    /**
+     * 添加聊天室成员
+     */
+    async addChatRoomMembers(roomId: number, userIds: number[]): Promise<{ message: string }> {
+        const response = await this.client.post<{ message: string }>(`/chat/rooms/${roomId}/members`, {
+            user_ids: userIds,
+        });
+        return response.data;
+    }
+
+    /**
+     * 获取聊天室消息
+     */
+    async getChatMessages(
+        roomId: number,
+        params?: { page?: number; page_size?: number; before_id?: number }
+    ): Promise<ChatMessageListResponse> {
+        const response = await this.client.get<ChatMessageListResponse>(`/chat/rooms/${roomId}/messages`, {
+            params,
+        });
+        return response.data;
+    }
+
+    /**
+     * 发送聊天消息
+     */
+    async sendChatMessage(roomId: number, data: SendChatMessageRequest): Promise<ChatMessage> {
+        const response = await this.client.post<ChatMessage>(`/chat/rooms/${roomId}/messages`, data);
+        return response.data;
+    }
+
+    /**
+     * 标记消息为已读
+     */
+    async markChatMessageRead(messageId: number): Promise<{ message: string }> {
+        const response = await this.client.post<{ message: string }>(`/chat/messages/${messageId}/read`, {});
         return response.data;
     }
 

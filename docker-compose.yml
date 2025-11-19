@@ -8,7 +8,7 @@ services:
   #   environment:
   #     POSTGRES_DB: collab
   #     POSTGRES_USER: collab
-  #     POSTGRES_PASSWORD: 20050430
+  #     POSTGRES_PASSWORD: password
   #   ports:
   #     - "5432:5432"
   #   volumes:

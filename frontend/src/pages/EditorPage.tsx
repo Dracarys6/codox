@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
@@ -6,10 +6,12 @@ import { Document } from '../types';
 import { DocumentEditor } from '../components/DocumentEditor';
 import { CommentPanel } from '../components/CommentPanel';
 import { TaskPanel } from '../components/TaskPanel';
+import { AclManager } from '../components/AclManager';
+import { ChatPanel } from '../components/chat/ChatPanel';
 
 export function EditorPage() {
   const { id } = useParams<{ id: string }>();
-  const docId = Number(id);
+  const docId = id ? Number(id) : NaN;
   const { user } = useAuth();
   const navigate = useNavigate();
   const [document, setDocument] = useState<Document | null>(null);
@@ -18,16 +20,17 @@ export function EditorPage() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'comments' | 'tasks'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'comments' | 'tasks' | 'acl' | 'chat'>('info');
   const [isSaving, setIsSaving] = useState(false);
+  const saveRequestRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
-    if (!docId) {
+    if (!id || isNaN(docId) || docId <= 0) {
       navigate('/documents');
       return;
     }
     loadDocument(docId);
-  }, [docId]);
+  }, [docId, id, navigate]);
 
   const loadDocument = async (currentId: number) => {
     setIsLoading(true);
@@ -61,9 +64,11 @@ export function EditorPage() {
     if (!docId) return;
     try {
       setIsSaving(true);
-      // DocumentEditor 会自动保存快照，这里只是更新保存时间显示
-      // 实际保存由 DocumentEditor 的自动保存机制处理
-      setLastSavedAt(new Date().toLocaleTimeString('zh-CN'));
+      // 触发保存快照
+      if (saveRequestRef.current) {
+        await saveRequestRef.current();
+        setLastSavedAt(new Date().toLocaleTimeString('zh-CN'));
+      }
       // 显示保存成功提示
       setTimeout(() => {
         setIsSaving(false);
@@ -74,11 +79,26 @@ export function EditorPage() {
     }
   };
 
-  const handleExit = () => {
-    if (window.confirm('确定要退出编辑吗？未保存的更改可能会丢失。')) {
-      navigate('/documents');
+  const handleExit = async () => {
+    const confirmed = window.confirm('确定要退出编辑吗？未保存的更改可能会丢失。');
+    if (!confirmed) return;
+
+    // 退出前尝试保存
+    try {
+      if (saveRequestRef.current) {
+        setIsSaving(true);
+        await saveRequestRef.current();
+        setLastSavedAt(new Date().toLocaleTimeString('zh-CN'));
+        setIsSaving(false);
+      }
+    } catch (err) {
+      console.error('Failed to save before exit:', err);
+      // 即使保存失败也允许退出
     }
+
+    navigate('/documents');
   };
+
 
   if (isLoading) {
     return (
@@ -188,42 +208,61 @@ export function EditorPage() {
                   setLastSavedAt(new Date().toLocaleTimeString('zh-CN'));
                   setIsSaving(false);
                 }}
+                onSaveReady={(saveFn) => {
+                  // 保存函数准备好时，存储到 ref
+                  saveRequestRef.current = saveFn;
+                }}
               />
             </section>
 
             {/* 信息侧栏 */}
             <aside className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               {/* 标签页导航 */}
-              <div className="border-b border-gray-200 flex">
+              <div className="border-b border-gray-200 grid grid-cols-2 sm:grid-cols-5">
                 <button
                   onClick={() => setActiveTab('info')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-custom ${
-                    activeTab === 'info'
+                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'info'
                       ? 'text-primary border-b-2 border-primary bg-primary/5'
                       : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}
+                    }`}
                 >
                   <i className="fa fa-info-circle mr-2"></i>信息
                 </button>
                 <button
                   onClick={() => setActiveTab('comments')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-custom ${
-                    activeTab === 'comments'
+                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'comments'
                       ? 'text-primary border-b-2 border-primary bg-primary/5'
                       : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}
+                    }`}
                 >
                   <i className="fa fa-comments mr-2"></i>评论
                 </button>
                 <button
                   onClick={() => setActiveTab('tasks')}
-                  className={`flex-1 px-4 py-3 text-sm font-medium transition-custom ${
-                    activeTab === 'tasks'
+                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'tasks'
                       ? 'text-primary border-b-2 border-primary bg-primary/5'
                       : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                  }`}
+                    }`}
                 >
                   <i className="fa fa-tasks mr-2"></i>任务
+                </button>
+                <button
+                  onClick={() => setActiveTab('acl')}
+                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'acl'
+                      ? 'text-primary border-b-2 border-primary bg-primary/5'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                  <i className="fa fa-lock mr-2"></i>权限
+                </button>
+                <button
+                  onClick={() => setActiveTab('chat')}
+                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'chat'
+                      ? 'text-primary border-b-2 border-primary bg-primary/5'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    }`}
+                >
+                  <i className="fa fa-comments-o mr-2"></i>聊天
                 </button>
               </div>
 
@@ -294,6 +333,21 @@ export function EditorPage() {
                 {activeTab === 'comments' && <CommentPanel docId={docId} />}
 
                 {activeTab === 'tasks' && <TaskPanel docId={docId} />}
+
+                {activeTab === 'acl' && (
+                  <div className="max-h-[calc(100vh-360px)] overflow-y-auto pr-1 -mr-1">
+                    <AclManager
+                      docId={docId}
+                      onUpdate={() => loadDocument(docId)}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'chat' && (
+                  <div className="max-h-[calc(100vh-360px)] overflow-y-auto pr-1">
+                    <ChatPanel docId={docId} />
+                  </div>
+                )}
               </div>
             </aside>
           </div>

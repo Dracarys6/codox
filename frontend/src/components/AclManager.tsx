@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '../api/client';
 import { DocumentAcl, AclEntry, UpdateAclRequest } from '../types';
 
@@ -7,17 +7,57 @@ interface AclManagerProps {
     onUpdate?: () => void;
 }
 
+const PERMISSION_INFO = {
+    owner: {
+        label: '所有者',
+        icon: '👑',
+        description: '拥有文档的完全控制权，可以编辑、删除文档并管理权限',
+        color: 'from-purple-500 to-pink-500',
+        bgColor: 'bg-purple-50',
+        textColor: 'text-purple-700',
+        borderColor: 'border-purple-200',
+    },
+    editor: {
+        label: '编辑者',
+        icon: '✏️',
+        description: '可以编辑文档内容，但不能删除文档或修改权限',
+        color: 'from-blue-500 to-cyan-500',
+        bgColor: 'bg-blue-50',
+        textColor: 'text-blue-700',
+        borderColor: 'border-blue-200',
+    },
+    viewer: {
+        label: '查看者',
+        icon: '👁️',
+        description: '只能查看文档内容，不能进行编辑',
+        color: 'from-gray-400 to-gray-500',
+        bgColor: 'bg-gray-50',
+        textColor: 'text-gray-700',
+        borderColor: 'border-gray-200',
+    },
+};
+
 export function AclManager({ docId, onUpdate }: AclManagerProps) {
     const [acl, setAcl] = useState<DocumentAcl | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [success, setSuccess] = useState<string | null>(null);
     const [newUserId, setNewUserId] = useState('');
     const [newPermission, setNewPermission] = useState<'editor' | 'viewer'>('editor');
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         loadAcl();
     }, [docId]);
+
+    // 自动清除成功消息
+    useEffect(() => {
+        if (success) {
+            const timer = setTimeout(() => setSuccess(null), 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [success]);
 
     const loadAcl = async () => {
         try {
@@ -33,6 +73,30 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
         }
     };
 
+    // 过滤权限列表
+    const filteredAcl = useMemo(() => {
+        if (!acl) return [];
+        if (!searchTerm.trim()) return acl.acl;
+        const term = searchTerm.toLowerCase();
+        return acl.acl.filter((entry) => {
+            const email = entry.email?.toLowerCase() || '';
+            const nickname = entry.nickname?.toLowerCase() || '';
+            const userId = entry.user_id.toString();
+            return email.includes(term) || nickname.includes(term) || userId.includes(term);
+        });
+    }, [acl, searchTerm]);
+
+    // 统计信息
+    const stats = useMemo(() => {
+        if (!acl) return { total: 0, owners: 0, editors: 0, viewers: 0 };
+        return {
+            total: acl.acl.length,
+            owners: acl.acl.filter((e) => e.permission === 'owner').length,
+            editors: acl.acl.filter((e) => e.permission === 'editor').length,
+            viewers: acl.acl.filter((e) => e.permission === 'viewer').length,
+        };
+    }, [acl]);
+
     const handleAddAcl = async () => {
         if (!newUserId.trim()) {
             setError('请输入用户ID');
@@ -40,14 +104,15 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
         }
 
         const userId = parseInt(newUserId);
-        if (isNaN(userId)) {
-            setError('用户ID必须是数字');
+        if (isNaN(userId) || userId <= 0) {
+            setError('用户ID必须是正整数');
             return;
         }
 
         try {
             setSaving(true);
             setError(null);
+            setSuccess(null);
 
             const currentAcl = acl?.acl || [];
             // 检查是否已存在
@@ -63,6 +128,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
 
             await apiClient.updateDocumentAcl(docId, updatedAcl);
             setNewUserId('');
+            setSuccess('权限添加成功');
             await loadAcl();
             onUpdate?.();
         } catch (err: any) {
@@ -77,6 +143,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
         try {
             setSaving(true);
             setError(null);
+            setSuccess(null);
 
             const currentAcl = acl?.acl || [];
             const updatedAcl: UpdateAclRequest = {
@@ -86,6 +153,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
             };
 
             await apiClient.updateDocumentAcl(docId, updatedAcl);
+            setSuccess('权限更新成功');
             await loadAcl();
             onUpdate?.();
         } catch (err: any) {
@@ -96,14 +164,15 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
         }
     };
 
-    const handleRemoveAcl = async (userId: number) => {
-        if (!window.confirm('确定要移除该用户的权限吗？')) {
+    const handleRemoveAcl = async (userId: number, userName: string) => {
+        if (!window.confirm(`确定要移除用户 "${userName}" 的权限吗？`)) {
             return;
         }
 
         try {
             setSaving(true);
             setError(null);
+            setSuccess(null);
 
             const currentAcl = acl?.acl || [];
             // 过滤掉要删除的用户，但保留owner
@@ -114,6 +183,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
             };
 
             await apiClient.updateDocumentAcl(docId, updatedAcl);
+            setSuccess('权限移除成功');
             await loadAcl();
             onUpdate?.();
         } catch (err: any) {
@@ -124,10 +194,22 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
         }
     };
 
+    const getDisplayName = (entry: AclEntry) => {
+        if (entry.nickname) return entry.nickname;
+        if (entry.email) return entry.email;
+        return `用户 ${entry.user_id}`;
+    };
+
+    const getInitials = (entry: AclEntry) => {
+        if (entry.nickname) return entry.nickname[0].toUpperCase();
+        if (entry.email) return entry.email[0].toUpperCase();
+        return entry.user_id.toString().slice(-1);
+    };
+
     if (loading) {
         return (
             <div className="text-center py-12">
-                <div className="inline-block animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-blue-600"></div>
+                <div className="inline-block animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-primary"></div>
                 <p className="mt-4 text-sm font-medium text-gray-600">加载权限信息中...</p>
             </div>
         );
@@ -135,37 +217,100 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
 
     return (
         <div className="space-y-6">
+            {/* 标题和统计 */}
+            <div>
+                <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-                <div className="w-1 h-6 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full"></div>
-                <h3 className="text-xl font-bold text-gray-900">访问控制列表</h3>
+                        <div className="w-1 h-8 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full"></div>
+                        <h3 className="text-xl font-bold text-gray-900">访问权限</h3>
+                    </div>
+                    {stats.total > 0 && (
+                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <span className="px-2 py-1 bg-gray-100 rounded-full">
+                                共 {stats.total} 人
+                            </span>
+                        </div>
+                    )}
+                </div>
+
+                {/* 统计卡片 */}
+                {stats.total > 0 && (
+                    <div className="grid grid-cols-3 gap-2 mb-4">
+                        <div className="px-3 py-2 bg-purple-50 rounded-lg border border-purple-100">
+                            <div className="text-xs text-purple-600 font-medium">所有者</div>
+                            <div className="text-lg font-bold text-purple-700">{stats.owners}</div>
+                        </div>
+                        <div className="px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
+                            <div className="text-xs text-blue-600 font-medium">编辑者</div>
+                            <div className="text-lg font-bold text-blue-700">{stats.editors}</div>
+                        </div>
+                        <div className="px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                            <div className="text-xs text-gray-600 font-medium">查看者</div>
+                            <div className="text-lg font-bold text-gray-700">{stats.viewers}</div>
+                        </div>
+                    </div>
+                )}
             </div>
+
+            {/* 成功提示 */}
+            {success && (
+                <div className="bg-green-50 border-2 border-green-200 text-green-700 px-4 py-3 rounded-xl flex items-center gap-2 animate-fade-in">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-sm font-medium">{success}</span>
+                </div>
+            )}
 
             {/* 错误提示 */}
             {error && (
-                <div className="bg-gradient-to-r from-red-50 to-pink-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2 animate-shake">
-                    <svg className="w-3 h-3 min-w-[0.75rem]" fill="currentColor" viewBox="0 0 20 20">
+                <div className="bg-red-50 border-2 border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2">
+                    <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                     </svg>
                     <span className="text-sm font-medium">{error}</span>
                 </div>
             )}
 
+            {/* 搜索框 */}
+            {acl && acl.acl.length > 0 && (
+                <div className="relative">
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        placeholder="搜索用户（ID、邮箱、昵称）..."
+                        className="w-full px-4 py-2.5 pl-10 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm placeholder:text-gray-400"
+                    />
+                    <i className="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    {searchTerm && (
+                        <button
+                            onClick={() => setSearchTerm('')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                            <i className="fa fa-times"></i>
+                        </button>
+                    )}
+                </div>
+            )}
+
             {/* 添加新权限 */}
-            <div className="p-5 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border-2 border-blue-200/50 shadow-sm">
+            <div className="p-5 bg-gradient-to-br from-blue-50/50 to-purple-50/50 rounded-2xl border-2 border-blue-200/30 shadow-sm">
                 <h4 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <svg className="icon-sm text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                    </svg>
+                    <i className="fa fa-user-plus text-blue-600"></i>
                     添加用户权限
                 </h4>
                 <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1">
                     <input
                         type="number"
                         value={newUserId}
                         onChange={(e) => setNewUserId(e.target.value)}
-                        placeholder="用户ID"
-                        className="flex-1 px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm placeholder:text-gray-400"
+                            placeholder="输入用户ID"
+                            min="1"
+                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm placeholder:text-gray-400"
                     />
+                    </div>
                     <select
                         value={newPermission}
                         onChange={(e) => setNewPermission(e.target.value as 'editor' | 'viewer')}
@@ -181,50 +326,65 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
                     >
                         {saving ? (
                             <>
-                                <svg className="animate-spin icon-sm" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                处理中...
+                                <i className="fa fa-spinner fa-spin"></i>
+                                添加中...
                             </>
                         ) : (
                             <>
-                                <svg className="w-3 h-3 min-w-[0.75rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
+                                <i className="fa fa-plus"></i>
                                 添加
                             </>
                         )}
                     </button>
                 </div>
+                <p className="mt-3 text-xs text-gray-500">
+                    {newPermission === 'editor' ? PERMISSION_INFO.editor.description : PERMISSION_INFO.viewer.description}
+                </p>
             </div>
 
             {/* 权限列表 */}
-            {acl && acl.acl.length > 0 ? (
+            {acl && filteredAcl.length > 0 ? (
                 <div className="space-y-3">
-                    {acl.acl.map((entry, idx) => (
+                    {filteredAcl.map((entry, idx) => {
+                        const info = PERMISSION_INFO[entry.permission];
+                        const displayName = getDisplayName(entry);
+                        const initials = getInitials(entry);
+                        const isOwner = entry.permission === 'owner';
+
+                        return (
                         <div
-                            key={idx}
-                            className="group flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 bg-white/80 rounded-2xl border-2 border-gray-200/60 hover:border-blue-300/50 transition-all duration-300 hover:shadow-md"
+                                key={`${entry.user_id}-${idx}`}
+                                className="group flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 bg-white rounded-xl border-2 border-gray-200 hover:border-blue-300 transition-all duration-300 hover:shadow-md"
                         >
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold shadow-md">
-                                    {entry.user_id}
+                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    {/* 头像 */}
+                                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${info.color} flex items-center justify-center text-white font-bold text-lg shadow-md flex-shrink-0`}>
+                                        {initials}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-gray-900 font-semibold truncate">{displayName}</span>
+                                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold ${info.bgColor} ${info.textColor} rounded-full border ${info.borderColor}`}>
+                                                <span>{info.icon}</span>
+                                                {info.label}
+                                            </span>
                                 </div>
-                                <div>
-                                    <span className="text-gray-900 font-semibold block">用户 {entry.user_id}</span>
-                                    {entry.permission === 'owner' && (
-                                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 rounded-full border border-purple-200/50 mt-1">
-                                            <svg className="w-3 h-3 min-w-[0.75rem]" fill="currentColor" viewBox="0 0 20 20">
-                                                <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                            </svg>
-                                            所有者
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-gray-500">
+                                            {entry.email && (
+                                                <span className="truncate">
+                                                    <i className="fa fa-envelope mr-1"></i>
+                                                    {entry.email}
                                         </span>
                                     )}
+                                            <span className="text-gray-400">ID: {entry.user_id}</span>
+                                        </div>
+                                        {isOwner && (
+                                            <p className="mt-1 text-xs text-gray-400">{info.description}</p>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                {entry.permission !== 'owner' ? (
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    {!isOwner ? (
                                     <>
                                         <select
                                             value={entry.permission}
@@ -235,41 +395,52 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
                                                 )
                                             }
                                             disabled={saving}
-                                            className="px-4 py-2 text-sm font-medium border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed bg-white transition-all duration-200"
+                                                className="px-3 py-2 text-sm font-medium border-2 border-gray-200 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed bg-white transition-all duration-200"
                                         >
                                             <option value="editor">✏️ 编辑者</option>
                                             <option value="viewer">👁️ 查看者</option>
                                         </select>
                                         <button
-                                            onClick={() => handleRemoveAcl(entry.user_id)}
+                                                onClick={() => handleRemoveAcl(entry.user_id, displayName)}
                                             disabled={saving}
-                                            className="px-4 py-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl border-2 border-red-200 hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+                                                className="px-3 py-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border-2 border-red-200 hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
+                                                title="移除权限"
                                         >
-                                            <svg className="w-3 h-3 min-w-[0.75rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                            </svg>
-                                            移除
+                                                <i className="fa fa-trash"></i>
+                                                <span className="hidden sm:inline">移除</span>
                                         </button>
                                     </>
                                 ) : (
-                                    <span className="px-4 py-2 text-sm font-medium text-gray-500 bg-gray-100 rounded-xl border-2 border-gray-200">
-                                        🔒 不可修改
-                                    </span>
+                                        <div className="px-3 py-2 text-sm font-medium text-gray-500 bg-gray-100 rounded-lg border-2 border-gray-200 flex items-center gap-2">
+                                            <i className="fa fa-lock"></i>
+                                            <span>不可修改</span>
+                                        </div>
                                 )}
+                                </div>
                             </div>
+                        );
+                    })}
                         </div>
-                    ))}
+            ) : acl && acl.acl.length > 0 && searchTerm ? (
+                <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-gray-200">
+                    <i className="fa fa-search text-4xl text-gray-300 mb-3"></i>
+                    <p className="text-gray-500 font-medium text-sm">未找到匹配的用户</p>
+                    <button
+                        onClick={() => setSearchTerm('')}
+                        className="mt-2 text-xs text-primary hover:text-primary/80"
+                    >
+                        清除搜索
+                    </button>
                 </div>
             ) : (
-                <div className="text-center py-12 bg-gray-50/50 rounded-2xl border-2 border-gray-200/50">
-                    <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                    <p className="text-gray-500 font-medium text-sm">暂无权限记录</p>
-                    <p className="text-gray-400 text-xs mt-1">添加用户以开始协作</p>
+                <div className="text-center py-12 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-gray-200">
+                    <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i className="fa fa-users text-2xl text-gray-400"></i>
+                    </div>
+                    <p className="text-gray-600 font-medium text-sm mb-1">暂无协作者</p>
+                    <p className="text-gray-400 text-xs">添加用户以开始协作</p>
                 </div>
             )}
         </div>
     );
 }
-

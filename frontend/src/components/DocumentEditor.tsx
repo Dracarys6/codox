@@ -10,13 +10,15 @@ import { calculateSHA256, uploadSnapshot } from '../utils/snapshot';
 interface DocumentEditorProps {
     docId: number;
     onSave?: () => void;
+    onSaveReady?: (saveFn: () => Promise<void>) => void; // 保存函数准备好时的回调
 }
 
-export function DocumentEditor({ docId, onSave }: DocumentEditorProps) {
+export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorProps) {
     const ydocRef = useRef<Y.Doc | null>(null);
     const providerRef = useRef<WebsocketProvider | null>(null);
     const saveIntervalRef = useRef<number | null>(null);
     const [isConnected, setIsConnected] = useState(false);
+    const saveSnapshotRef = useRef<(() => Promise<void>) | null>(null);
 
     // 获取 WebSocket URL（从环境变量或使用默认值）
     const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:1234';
@@ -71,15 +73,23 @@ export function DocumentEditor({ docId, onSave }: DocumentEditorProps) {
                                 const jsonData = atob(base64Data);
                                 const snapshotData = JSON.parse(jsonData);
                                 snapshotBytes = new Uint8Array(snapshotData);
+                            } else if (snapshot_url.startsWith('/api/collab/snapshot/')) {
+                                // 代理 URL，使用 API 客户端下载
+                                const arrayBuffer = await apiClient.downloadSnapshot(docId);
+                                snapshotBytes = new Uint8Array(arrayBuffer);
                             } else {
                                 // 普通的 URL，尝试获取二进制数据
                                 const snapshotResponse = await fetch(snapshot_url);
+                                if (!snapshotResponse.ok) {
+                                    throw new Error(`Failed to fetch snapshot: ${snapshotResponse.status}`);
+                                }
                                 const arrayBuffer = await snapshotResponse.arrayBuffer();
                                 snapshotBytes = new Uint8Array(arrayBuffer);
                             }
 
                             if (snapshotBytes.length > 0) {
                                 Y.applyUpdate(ydoc, snapshotBytes);
+                                console.log('Snapshot loaded successfully, size:', snapshotBytes.length);
                             }
                         } catch (error) {
                             console.warn('Failed to load snapshot, starting with empty document:', error);
@@ -93,14 +103,15 @@ export function DocumentEditor({ docId, onSave }: DocumentEditorProps) {
                 type = ydoc.getXmlFragment('prosemirror');
 
                 // 5. 连接 WebSocket
-                const provider = new WebsocketProvider(
-                    wsUrl,
-                    `doc-${docId}`,
-                    ydoc,
-                    {
-                        params: { token },
-                    }
-                );
+                const docName = `doc-${docId}`;
+                // 只传入基础地址，避免在 serverUrl 上拼接 query 导致路径异常
+                const provider = new WebsocketProvider(wsUrl || 'ws://localhost:1234', docName, ydoc, {
+                    params: {
+                        docId: String(docId),
+                        token,
+                        docName,
+                    },
+                });
                 providerRef.current = provider;
 
                 // 监听连接状态
@@ -140,38 +151,63 @@ export function DocumentEditor({ docId, onSave }: DocumentEditorProps) {
                     currentType.observeDeep(updateHandler);
                 }
 
-                // 7. 定期保存快照（每 30 秒）
-                saveIntervalRef.current = window.setInterval(async () => {
-                    if (!isMounted) return;
+                // 7. 创建保存快照的函数
+                const saveSnapshot = async (): Promise<void> => {
+                    if (!isMounted || !ydoc) return;
+
+                    // 验证 docId 是否有效
+                    if (!docId || isNaN(docId) || docId <= 0) {
+                        console.error('Invalid docId, skipping snapshot save:', docId);
+                        return;
+                    }
 
                     try {
                         const state = Y.encodeStateAsUpdate(ydoc);
                         const snapshot = Array.from(state);
 
-                        if (snapshot.length === 0) return; // 空文档不保存
+                        if (snapshot.length === 0) {
+                            console.log('Empty document, skipping save');
+                            return; // 空文档不保存
+                        }
 
                         const snapshotJson = JSON.stringify(snapshot);
                         const sha256 = await calculateSHA256(snapshotJson);
 
-                        // 上传到 MinIO（这里需要实现上传逻辑）
+                        // 上传到 MinIO
                         const snapshotUrl = await uploadSnapshot(docId, snapshot, sha256);
 
-                        // 回调到后端
-                        try {
-                            await apiClient.saveSnapshot(docId, {
-                                snapshot_url: snapshotUrl,
-                                sha256,
-                                size_bytes: snapshot.length,
-                            });
+                        // 保存快照元数据到后端
+                        await apiClient.saveSnapshot(docId, {
+                            snapshot_url: snapshotUrl,
+                            sha256,
+                            size_bytes: snapshot.length,
+                        });
 
-                            if (onSave && isMounted) {
-                                onSave();
-                            }
-                        } catch (error) {
-                            console.error('Failed to save snapshot:', error);
+                        if (onSave && isMounted) {
+                            onSave();
                         }
+                        console.log('Snapshot saved successfully');
                     } catch (error) {
-                        console.error('Failed to create snapshot:', error);
+                        console.error('Failed to save snapshot:', error);
+                        throw error; // 重新抛出错误，让调用者知道保存失败
+                    }
+                };
+
+                // 将保存函数存储到 ref，供外部调用
+                saveSnapshotRef.current = saveSnapshot;
+
+                // 通知外部保存函数已准备好
+                if (onSaveReady && isMounted) {
+                    onSaveReady(saveSnapshot);
+                }
+
+                // 8. 定期保存快照（每 30 秒）
+                saveIntervalRef.current = window.setInterval(async () => {
+                    try {
+                        await saveSnapshot();
+                    } catch (error) {
+                        // 定期保存失败不影响用户操作
+                        console.error('Periodic save failed:', error);
                     }
                 }, 30000);
 
@@ -200,7 +236,7 @@ export function DocumentEditor({ docId, onSave }: DocumentEditorProps) {
                 ydocRef.current = null;
             }
         };
-    }, [editor, docId, wsUrl, onSave]);
+    }, [editor, docId, wsUrl, onSave, onSaveReady]);
 
     return (
         <div className="border-2 border-blue-300/60 rounded-2xl bg-white shadow-xl overflow-hidden">

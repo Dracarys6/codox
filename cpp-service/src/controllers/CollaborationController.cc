@@ -1,12 +1,18 @@
 #include "CollaborationController.h"
 
 #include <json/json.h>
+#include <openssl/bio.h>
+#include <openssl/buffer.h>
+#include <openssl/evp.h>
 #include <unistd.h>  // for access()
 
+#include <ctime>
 #include <fstream>
 #include <sstream>
+#include <vector>
 
 #include "../utils/JwtUtil.h"
+#include "../utils/MinIOClient.h"
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
 
@@ -155,7 +161,15 @@ void CollaborationController::getBootstrap(const HttpRequestPtr& req,
                         return;
                     }
                     Json::Value responseJson;
-                    responseJson["snapshot_url"] = r[0]["snapshot_url"].as<std::string>();
+                    // 返回代理 URL 而不是直接的 MinIO URL，避免签名问题
+                    std::string minioUrl = r[0]["snapshot_url"].as<std::string>();
+                    // 如果已经是代理 URL，直接返回；否则转换为代理 URL
+                    if (minioUrl.find("/api/collab/snapshot/") != std::string::npos) {
+                        responseJson["snapshot_url"] = minioUrl;
+                    } else {
+                        // 转换为代理 URL
+                        responseJson["snapshot_url"] = "/api/collab/snapshot/" + docIdStr + "/download";
+                    }
                     responseJson["sha256"] = r[0]["snapshot_sha256"].as<std::string>();
                     responseJson["version_id"] = r[0]["version_id"].as<int>();
                     ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
@@ -293,4 +307,364 @@ void CollaborationController::handleSnapshot(const HttpRequestPtr& req,
                                          k500InternalServerError);
             },
             docIdStr, sha256);
+}
+
+void CollaborationController::uploadSnapshot(const HttpRequestPtr& req,
+                                             std::function<void(const HttpResponsePtr&)>&& callback) {
+    // 1. 获取路径参数 doc_id
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    std::string docIdStr = routingParams[0];
+    int docId;
+    try {
+        docId = std::stoi(docIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid Document ID", k400BadRequest);
+        return;
+    }
+
+    // 2. 获取 user_id
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 3. 检查权限（需要 editor 或更高权限）
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "editor", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
+            return;
+        }
+
+        // 4. 解析 JSON 请求体（包含 base64 编码的文件数据）
+        auto jsonPtr = req->jsonObject();
+        if (!jsonPtr) {
+            ResponseUtils::sendError(*callbackPtr, "Invalid JSON", k400BadRequest);
+            return;
+        }
+        Json::Value json = *jsonPtr;
+
+        if (!json.isMember("data") || !json["data"].isString()) {
+            ResponseUtils::sendError(*callbackPtr, "Missing 'data' field (base64 encoded file)", k400BadRequest);
+            return;
+        }
+
+        std::string base64Data = json["data"].asString();
+        std::string fileName = json.get("filename", "").asString();
+        if (fileName.empty()) {
+            // 生成默认文件名
+            auto now = std::time(nullptr);
+            char buffer[64];
+            std::strftime(buffer, sizeof(buffer), "%Y%m%d%H%M%S", std::gmtime(&now));
+            fileName = "snapshot-" + std::string(buffer) + ".bin";
+        }
+
+        // 5. Base64 解码（使用 OpenSSL）
+        std::vector<char> buffer;
+        BIO* bio = BIO_new_mem_buf(base64Data.c_str(), base64Data.length());
+        BIO* b64 = BIO_new(BIO_f_base64());
+        BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);  // 不处理换行符
+        bio = BIO_push(b64, bio);
+
+        // 分配缓冲区（base64 解码后大小约为原数据的 3/4）
+        size_t decodedSize = (base64Data.length() * 3) / 4;
+        buffer.resize(decodedSize);
+
+        int decodedLen = BIO_read(bio, buffer.data(), decodedSize);
+        BIO_free_all(bio);
+
+        if (decodedLen <= 0) {
+            ResponseUtils::sendError(*callbackPtr, "Invalid base64 data", k400BadRequest);
+            return;
+        }
+
+        // 调整缓冲区大小到实际解码长度
+        buffer.resize(decodedLen);
+
+        // 6. 构建 MinIO 对象名称
+        std::string objectName = "snapshots/doc-" + docIdStr + "/" + fileName;
+
+        // 7. 上传到 MinIO
+        MinIOClient::uploadFile(
+                objectName, buffer.data(), buffer.size(), "application/octet-stream",
+                [=](const std::string& url) {
+                    // 上传成功，返回 URL
+                    Json::Value responseJson;
+                    responseJson["snapshot_url"] = url;
+                    responseJson["message"] = "File uploaded successfully";
+                    ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                },
+                [=](const std::string& error) {
+                    // 上传失败
+                    ResponseUtils::sendError(*callbackPtr, "Failed to upload to MinIO: " + error,
+                                             k500InternalServerError);
+                });
+    });
+}
+
+void CollaborationController::saveSnapshotMetadata(const HttpRequestPtr& req,
+                                                   std::function<void(const HttpResponsePtr&)>&& callback) {
+    // 1.获取路径参数
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    std::string docIdStr = routingParams[0];
+    int docId;
+    try {
+        docId = std::stoi(docIdStr);
+        if (docId <= 0) {
+            ResponseUtils::sendError(callback, "Invalid document ID: must be positive", k400BadRequest);
+            return;
+        }
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID", k400BadRequest);
+        return;
+    }
+
+    // 2.获取 user_id (由 JwtAuthFilter 设置)
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 3.检查权限（需要 editor 或更高权限）
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "editor", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
+            return;
+        }
+
+        // 4.解析请求体
+        auto jsonPtr = req->jsonObject();
+        if (!jsonPtr) {
+            ResponseUtils::sendError(*callbackPtr, "Invalid JSON", k400BadRequest);
+            return;
+        }
+        Json::Value json = *jsonPtr;
+
+        if (!json.isMember("snapshot_url") || !json.isMember("sha256") || !json.isMember("size_bytes")) {
+            ResponseUtils::sendError(*callbackPtr, "Missing required fields", k400BadRequest);
+            return;
+        }
+
+        std::string snapshotUrl = json["snapshot_url"].asString();
+        std::string sha256 = json["sha256"].asString();
+        int64_t sizeBytes = json["size_bytes"].asInt64();
+
+        // 5.检查是否已存在相同 SHA256 的版本(幂等性)
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "SELECT id FROM document_version WHERE doc_id = $1 AND snapshot_sha256 = $2",
+                [=](const drogon::orm::Result& r) {
+                    if (!r.empty()) {
+                        // 已存在,返回现有版本 ID
+                        Json::Value responseJson;
+                        responseJson["version_id"] = r[0]["id"].as<int>();
+                        responseJson["message"] = "Version already exists";
+                        ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                        return;
+                    }
+
+                    // 6.插入新版本记录 (created_by 使用当前用户)
+                    db->execSqlAsync(
+                            "INSERT INTO document_version (doc_id, snapshot_url, snapshot_sha256, size_bytes, "
+                            "created_by)"
+                            "VALUES ($1, $2, $3, $4::bigint, $5::integer)"
+                            "RETURNING id",
+                            [=](const drogon::orm::Result& r) {
+                                if (r.empty()) {
+                                    ResponseUtils::sendError(*callbackPtr, "Failed to create version",
+                                                             k500InternalServerError);
+                                    return;
+                                }
+
+                                int versionId = r[0]["id"].as<int>();
+
+                                // 7.更新文档的 last_published_version_id
+                                db->execSqlAsync(
+                                        "UPDATE document SET last_published_version_id = $1::bigint, "
+                                        "updated_at = NOW()"
+                                        "WHERE id = $2::integer",
+                                        [=](const drogon::orm::Result&) {
+                                            Json::Value responseJson;
+                                            responseJson["version_id"] = versionId;
+                                            responseJson["message"] = "Snapshot saved successfully";
+                                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                                        },
+                                        [=](const drogon::orm::DrogonDbException& e) {
+                                            ResponseUtils::sendError(*callbackPtr,
+                                                                     "Database error: " + std::string(e.base().what()),
+                                                                     k500InternalServerError);
+                                        },
+                                        std::to_string(versionId), docIdStr);
+                            },
+                            [=](const drogon::orm::DrogonDbException& e) {
+                                ResponseUtils::sendError(*callbackPtr,
+                                                         "Database error: " + std::string(e.base().what()),
+                                                         k500InternalServerError);
+                            },
+                            docIdStr, snapshotUrl, sha256, std::to_string(sizeBytes), std::to_string(userId));
+                },
+                [=](const drogon::orm::DrogonDbException& e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                docIdStr, sha256);
+    });
+}
+
+void CollaborationController::downloadSnapshot(const HttpRequestPtr& req,
+                                               std::function<void(const HttpResponsePtr&)>&& callback) {
+    // 1.获取路径参数
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    std::string docIdStr = routingParams[0];
+    int docId;
+    try {
+        docId = std::stoi(docIdStr);
+        if (docId <= 0) {
+            ResponseUtils::sendError(callback, "Invalid document ID: must be positive", k400BadRequest);
+            return;
+        }
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID", k400BadRequest);
+        return;
+    }
+
+    // 2.获取 user_id (由 JwtAuthFilter 设置)
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 3.检查权限（需要 viewer 或更高权限）
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
+            return;
+        }
+
+        // 4.查询文档的最新快照 URL
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "SELECT dv.snapshot_url "
+                "FROM document d "
+                "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id "
+                "WHERE d.id = $1",
+                [=](const drogon::orm::Result& r) {
+                    if (r.empty() || r[0]["snapshot_url"].isNull()) {
+                        ResponseUtils::sendError(*callbackPtr, "Snapshot not found", k404NotFound);
+                        return;
+                    }
+
+                    std::string minioUrl = r[0]["snapshot_url"].as<std::string>();
+
+                    // 5.从 MinIO URL 中提取 objectName
+                    // URL 格式: http://localhost:9000/documents/snapshots/doc-123/filename.bin
+                    std::string objectName;
+                    size_t bucketPos = minioUrl.find("/documents/");
+                    if (bucketPos != std::string::npos) {
+                        // 提取 documents/ 之后的部分
+                        objectName = minioUrl.substr(bucketPos + 11);  // 跳过 "/documents/"
+                    } else {
+                        // 如果 URL 格式不对，尝试其他方式
+                        // 可能是相对路径或已经提取过的路径
+                        if (minioUrl.find("snapshots/") != std::string::npos) {
+                            // 已经是 snapshots/ 开头的路径
+                            objectName = minioUrl;
+                        } else {
+                            // 尝试从完整 URL 中提取
+                            size_t httpPos = minioUrl.find("://");
+                            if (httpPos != std::string::npos) {
+                                size_t pathStart = minioUrl.find('/', httpPos + 3);
+                                if (pathStart != std::string::npos) {
+                                    std::string path = minioUrl.substr(pathStart + 1);  // 跳过第一个 /
+                                    size_t bucketSlash = path.find('/');
+                                    if (bucketSlash != std::string::npos) {
+                                        objectName = path.substr(bucketSlash + 1);  // 跳过 bucket 名称
+                                    } else {
+                                        objectName = path;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (objectName.empty()) {
+                            ResponseUtils::sendError(*callbackPtr, "Invalid snapshot URL format: " + minioUrl,
+                                                     k500InternalServerError);
+                            return;
+                        }
+                    }
+
+                    // 6.从 MinIO 下载文件
+                    MinIOClient::downloadFile(
+                            objectName,
+                            [=](const std::vector<char>& data) {
+                                // 下载成功，返回文件内容
+                                auto resp = HttpResponse::newHttpResponse();
+                                resp->setStatusCode(k200OK);
+                                resp->setContentTypeCode(CT_APPLICATION_OCTET_STREAM);
+                                resp->setBody(std::string(data.data(), data.size()));
+                                // 添加安全响应头
+                                resp->addHeader("X-Content-Type-Options", "nosniff");
+                                resp->addHeader("Content-Disposition", "attachment");
+                                (*callbackPtr)(resp);
+                            },
+                            [=](const std::string& error) {
+                                // 下载失败
+                                ResponseUtils::sendError(*callbackPtr, "Failed to download snapshot: " + error,
+                                                         k500InternalServerError);
+                            });
+                },
+                [=](const drogon::orm::DrogonDbException& e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                docIdStr);
+    });
 }

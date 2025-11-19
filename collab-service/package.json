@@ -13,11 +13,13 @@
   "description": "",
   "dependencies": {
     "@y/websocket-server": "^0.1.1",
+    "jsonwebtoken": "^9.0.2",
     "ws": "^8.18.3",
     "y-protocols": "^1.0.6",
     "y-websocket": "^3.0.0"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.7",
     "@types/ws": "^8.18.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",

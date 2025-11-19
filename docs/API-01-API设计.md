@@ -30,6 +30,8 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 - `GET /api/docs/{id}` — 文档详情，返回标签、锁定状态、最后发布版本等。
 - `PATCH /api/docs/{id}` — 修改标题/锁定状态/标签（标签增删差异化更新）。
 - `DELETE /api/docs/{id}` — 删除文档（实现为软删除入口），需 owner 权限。
+- `GET /api/docs/{id}/acl` — 仅文档 owner 可调用，返回完整 ACL 列表（包含用户信息、权限、邮箱、昵称等）。
+- `PUT /api/docs/{id}/acl` — 仅 owner 可调用，替换除 owner 外的 ACL 记录（需校验权限枚举：viewer、editor），防止删除或修改 owner 权限。
 
 ### 实时协作
 - `POST /api/collab/token` — 生成协作一次性令牌（默认 1 小时有效），需 `doc_id`。
@@ -74,10 +76,6 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 > ✅ 实时通讯模块已完成实现，支持三种聊天室类型、消息发送/接收、已读状态管理等功能。
 
 ---
-
-### 文档权限（ACL）- 第四阶段优先任务 
-- `GET /api/docs/{id}/acl` — 仅文档 owner 可调用，返回完整 ACL 列表（包含用户信息、权限、邮箱、昵称等）。
-- `PUT /api/docs/{id}/acl` — 仅 owner 可调用，替换除 owner 外的 ACL 记录（需校验权限枚举：viewer、editor），防止删除或修改 owner 权限。
 
 ### 文档版本
 - `POST /api/docs/{id}/publish` — owner/editor 发布新版本，写入 `document_version` 并更新 `last_published_version_id`。

@@ -112,6 +112,8 @@ export interface DocumentListParams {
 export interface AclEntry {
     user_id: number;
     permission: 'owner' | 'editor' | 'viewer';
+    email?: string; // 可选，用于显示
+    nickname?: string; // 可选，用于显示
 }
 
 export interface DocumentAcl {
@@ -121,6 +123,106 @@ export interface DocumentAcl {
 
 export interface UpdateAclRequest {
     acl: AclEntry[];
+}
+
+// 聊天相关类型
+export type ChatRoomType = 'direct' | 'group' | 'document';
+
+export interface ChatRoom {
+    id: number;
+    name?: string;
+    type: ChatRoomType;
+    doc_id?: number;
+    created_by: number;
+    created_at: string;
+    updated_at: string;
+    last_message?: string;
+    last_message_time?: string;
+    unread_count?: number;
+}
+
+export interface ChatRoomListResponse {
+    rooms: ChatRoom[];
+    page: number;
+    page_size: number;
+}
+
+export interface ChatRoomListParams {
+    page?: number;
+    page_size?: number;
+    doc_id?: number;
+}
+
+export interface CreateChatRoomRequest {
+    name?: string;
+    type: ChatRoomType;
+    doc_id?: number;
+    member_ids?: number[];
+}
+
+export interface ChatMessage {
+    id: number;
+    room_id: number;
+    sender_id: number;
+    content?: string;
+    message_type: string;
+    file_url?: string;
+    reply_to?: number;
+    created_at: string;
+    sender_nickname?: string;
+    sender_avatar?: string;
+    is_read?: boolean;
+}
+
+export interface ChatMessageListResponse {
+    messages: ChatMessage[];
+    has_more: boolean;
+}
+
+export interface SendChatMessageRequest {
+    content?: string;
+    message_type?: string;
+    file_url?: string;
+    reply_to?: number;
+}
+
+// 通知相关类型
+export interface NotificationItem {
+    id: number;
+    type: string;
+    payload: Record<string, any>;
+    is_read: boolean;
+    created_at: string;
+}
+
+export interface NotificationListResponse {
+    notifications: NotificationItem[];
+    total: number;
+    page: number;
+    page_size: number;
+}
+
+export interface NotificationFilterParams {
+    page?: number;
+    page_size?: number;
+    unread_only?: boolean;
+    type?: string;
+    doc_id?: number;
+    start_date?: string;
+    end_date?: string;
+}
+
+export interface NotificationSetting {
+    notification_type: string;
+    email_enabled: boolean;
+    push_enabled: boolean;
+    in_app_enabled: boolean;
+}
+
+export interface UpdateNotificationSettingRequest {
+    email_enabled?: boolean;
+    push_enabled?: boolean;
+    in_app_enabled?: boolean;
 }
 
 // 版本相关类型

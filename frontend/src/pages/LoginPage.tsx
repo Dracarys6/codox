@@ -195,7 +195,7 @@ export function LoginPage() {
                 />
                 <label htmlFor="remember" className="ml-2 block text-sm text-gray-700">
                   记住我的登录状态
-                </label>
+              </label>
               </div>
 
               {/* 登录按钮 */}
@@ -230,13 +230,13 @@ export function LoginPage() {
             {/* 注册链接 */}
             <div className="mt-8 text-center">
               <p className="text-gray-600">
-                还没有账号?{' '}
+              还没有账号?{' '}
                 <Link
                   to="/register"
                   className="font-medium text-primary hover:text-primary/80 transition-custom"
                 >
-                  立即注册
-                </Link>
+                立即注册
+              </Link>
               </p>
             </div>
           </div>

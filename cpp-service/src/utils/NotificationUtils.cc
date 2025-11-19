@@ -3,6 +3,10 @@
 #include <drogon/drogon.h>
 #include <json/json.h>
 
+#include <memory>
+
+#include "../services/NotificationHub.h"
+
 void NotificationUtils::createCommentNotification(int docId, int commentId, int authorId, int targetUserId) {
     Json::Value payload;
     payload["doc_id"] = docId;
@@ -77,15 +81,61 @@ void NotificationUtils::createPermissionChangeNotification(int docId, int userId
     insertNotification(userId, "permission_changed", payload);
 }
 
+// 根据用户偏好写入通知并触发实时推送。
 void NotificationUtils::insertNotification(int userId, const std::string& type, const Json::Value& payload) {
-    Json::StreamWriterBuilder builder;
-    std::string payloadStr = Json::writeString(builder, payload);
-
     auto db = drogon::app().getDbClient();
     if (!db) return;
+    auto dbClient = db;
 
-    db->execSqlAsync(
-            "INSERT INTO notification (user_id, type, payload) VALUES ($1::integer, $2, $3::jsonb)",
-            [](const drogon::orm::Result&) {}, [](const drogon::orm::DrogonDbException&) {}, std::to_string(userId),
-            type, payloadStr);
+    Json::StreamWriterBuilder builder;
+    std::string payloadStr = Json::writeString(builder, payload);
+    std::string userIdStr = std::to_string(userId);
+
+    auto insertAndPush = [=](bool inAppEnabled) {
+        if (!inAppEnabled) {
+            return;
+        }
+        dbClient->execSqlAsync(
+                "INSERT INTO notification (user_id, type, payload) VALUES ($1::bigint, $2, $3::jsonb) "
+                "RETURNING id, user_id, type, payload, is_read, created_at",
+                [=](const drogon::orm::Result& r) {
+                    if (r.empty()) {
+                        return;
+                    }
+                    Json::Value notificationJson;
+                    notificationJson["id"] = r[0]["id"].as<int>();
+                    notificationJson["user_id"] = r[0]["user_id"].as<int>();
+                    notificationJson["type"] = r[0]["type"].as<std::string>();
+                    notificationJson["is_read"] = r[0]["is_read"].as<bool>();
+                    notificationJson["created_at"] = r[0]["created_at"].as<std::string>();
+
+                    Json::Value payloadJson;
+                    const std::string payloadText = r[0]["payload"].as<std::string>();
+                    Json::CharReaderBuilder readerBuilder;
+                    std::unique_ptr<Json::CharReader> reader(readerBuilder.newCharReader());
+                    JSONCPP_STRING errs;
+                    if (reader->parse(payloadText.data(), payloadText.data() + payloadText.size(), &payloadJson, &errs)) {
+                        notificationJson["payload"] = payloadJson;
+                    } else {
+                        notificationJson["payload_raw"] = payloadText;
+                    }
+
+                    NotificationHub::pushNotification(userId, notificationJson);
+                },
+                [](const drogon::orm::DrogonDbException&) {},
+                userIdStr, type, payloadStr);
+    };
+
+    // 在写入前查询用户的 in-app 设置，若无记录则默认启用。
+    dbClient->execSqlAsync(
+            "SELECT in_app_enabled FROM notification_setting "
+            "WHERE user_id = $1::bigint AND notification_type = $2",
+            [=](const drogon::orm::Result& r) {
+                bool inAppEnabled = true;
+                if (!r.empty()) {
+                    inAppEnabled = r[0]["in_app_enabled"].as<bool>();
+                }
+                insertAndPush(inAppEnabled);
+            },
+            [=](const drogon::orm::DrogonDbException&) { insertAndPush(true); }, userIdStr, type);
 }

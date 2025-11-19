@@ -55,16 +55,15 @@ node dist/server.js
 
 ### 3. 配置
 
-服务配置在 `server.ts` 中：
+服务主要通过环境变量配置：
 
-```typescript
-const wss = new WebSocketServer({ port: 1234 });
-```
-
-可以通过环境变量或命令行参数修改端口：
+| 变量 | 说明 | 默认值 |
+| --- | --- | --- |
+| `PORT` | WebSocket 服务端口 | `1234` |
+| `COLLAB_JWT_SECRET` | 用于验证协作令牌的 JWT Secret（必须与 C++ 服务一致） | `default-secret` |
 
 ```bash
-PORT=3000 npm start
+COLLAB_JWT_SECRET="your-secret" npm start
 ```
 
 ## 🔌 WebSocket 协议
@@ -80,7 +79,7 @@ ws://localhost:1234?docId=123&token=your-jwt-token
 ### 连接参数
 
 - `docId`: 文档 ID（必需）
-- `token`: JWT 认证令牌（可选，当前版本未验证）
+- `token`: 协作 JWT 令牌（必需，服务端会验证）
 
 ### 使用示例
 
@@ -100,6 +99,7 @@ const ws = new WebSocket(wsUrl);
 可以通过环境变量配置服务：
 
 - `PORT`: WebSocket 服务端口（默认: 1234）
+- `COLLAB_JWT_SECRET`: 协作令牌验证用的 Secret（默认: `default-secret`）
 
 ### 前端配置
 
@@ -121,7 +121,7 @@ VITE_WS_URL=ws://localhost:1234
 2. 使用 WebSocket 客户端测试连接：
    ```bash
    # 使用 wscat（需要先安装: npm install -g wscat）
-   wscat -c "ws://localhost:1234?docId=123&token=test"
+   wscat -c "ws://localhost:1234?docId=xxx&token=test"
    ```
 
 3. 在前端打开多个浏览器标签页，编辑同一文档，验证实时同步
@@ -162,44 +162,12 @@ PORT=3000 npm start
 
 ## 🔒 安全注意事项
 
-⚠️ **当前版本未实现 Token 验证**
-
-`server.ts` 中有 TODO 注释：
-
-```typescript
-// TODO: 验证 token（从业务后端验证）
-```
-
-**建议在生产环境中实现：**
-
-1. 从 URL 参数中提取 `token`
-2. 向 C++ 后端服务验证 Token 有效性
-3. 验证用户是否有权限访问该文档
-4. 拒绝无效或未授权的连接
-
-示例实现：
-
-```typescript
-import axios from 'axios';
-
-async function validateToken(token: string, docId: string): Promise<boolean> {
-  try {
-    const response = await axios.get(
-      `http://localhost:8080/api/collab/token/${docId}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    return response.status === 200;
-  } catch (error) {
-    return false;
-  }
-}
-
-// 在连接处理中使用
-if (token && !await validateToken(token, docId)) {
-  ws.close(1008, 'Invalid token');
-  return;
-}
-```
+- WebSocket 连接必须同时携带 `docId` 与 `token`
+- `server.ts` 会使用 `COLLAB_JWT_SECRET` 验证协作令牌
+- 令牌类型必须为 `collab` 且 `doc_id` 必须与请求的 `docId` 相同
+- 验证失败会返回 `1008 Policy Violation` 并拒绝连接
+- 建议将 `COLLAB_JWT_SECRET` 配置为与 C++ 服务相同的 `jwt_secret`
+- 如需进一步加固，可在验证成功后向 C++ 服务发起二次权限校验
 
 ## 📚 相关文档
 

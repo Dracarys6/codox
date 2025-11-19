@@ -1,6 +1,7 @@
 # codox
 
-一个由 C++/Drogon、Node.js y-websocket 与 React/Vite 前端协同打造的多人在线协作文档系统，内部代号 **Codox**。
+**codox**
+一个由 C++/Drogon、Node.js y-websocket 与 React/Vite 前端协同打造的多人在线协作文档系统。
 
 ## 📋 项目简介
 
@@ -10,8 +11,6 @@
 - `collab-service`：Yjs WebSocket 网关，负责实时协作数据通道
 - `frontend`：Tiptap 编辑器 + React 前端，接入实时协作、评论与任务面板
 - `docs`：逐阶段的设计 / 验收指南（第三阶段主打实时协作与协同工具）
-
-第三阶段的工作重点是把「文档协作 + 沟通 + 搜索」串成一体。当前 master 已经具备后端 API、协作服务和基础的 Tiptap 多人编辑能力，其余体验仍在打磨中。
 
 ### 核心功能&进度
 
@@ -113,13 +112,13 @@ sudo service postgresql start
 # 创建数据库和用户
 sudo -u postgres psql << EOF
 CREATE DATABASE collab;
-CREATE USER collab WITH PASSWORD '20050430';
+CREATE USER collab WITH PASSWORD 'your_password';
 GRANT ALL PRIVILEGES ON DATABASE collab TO collab;
 \q
 EOF
 
 # 执行初始化脚本
-PGPASSWORD=20050430 psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/init.sql
+PGPASSWORD=your_password psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/init.sql
 ```
 
 ### 3. 配置服务
@@ -136,7 +135,7 @@ PGPASSWORD=20050430 psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service
             "port": 5432,
             "dbname": "collab",
             "user": "collab",
-            "passwd": "20050430",
+            "passwd": "your_password",
             "is_fast": false,
             "connection_number": 5
         }
@@ -372,7 +371,6 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 ### 编译错误
 
 - **找不到 Drogon**：确保已正确编译安装 Drogon，并设置 `DROGON_INSTALL_PREFIX`
-- **找不到 jwt-cpp**：确保已安装 jwt-cpp 到 `/usr/local`
 - **链接错误**：检查 `CMakeLists.txt` 中的库路径配置
 
 ### 运行时错误
@@ -412,8 +410,9 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 ### 📅 第四阶段（当前开发）
 
+- [x] 文档权限管理
+- [x] 文档实时通讯（内置聊天）
 - [ ] 文档导入导出（Word/PDF/Markdown）
-- [ ] 文档模板系统
 - [ ] 移动端支持（PWA）
 - [ ] 监控与告警（Prometheus + Grafana）
 - [ ] 集中日志（Loki/ELK）

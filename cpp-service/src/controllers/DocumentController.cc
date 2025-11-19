@@ -3,6 +3,7 @@
 #include <drogon/drogon.h>
 #include <json/json.h>
 
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <sstream>
@@ -336,20 +337,21 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
         return;
     }
     // 2.解析查询参数
-    int page = 1;
-    int pageSize = 20;
-    std::string pageStr = req->getParameter("page");
-    std::string pageSizeStr = req->getParameter("pageSize");
-    try {
-        if (!pageStr.empty()) page = std::max(1, std::stoi(pageStr));
-    } catch (...) {
-    }
-    try {
-        if (!pageSizeStr.empty()) pageSize = std::min(100, std::max(1, std::stoi(pageSizeStr)));
-    } catch (...) {
-    }
+    // 通用的整数参数解析，保证边界合法
+    auto parseIntParam = [&](const std::string &name, int minValue, int maxValue, int defaultValue) {
+        std::string value = req->getParameter(name);
+        if (value.empty()) return defaultValue;
+        try {
+            int parsed = std::stoi(value);
+            return std::max(minValue, std::min(maxValue, parsed));
+        } catch (...) {
+            return defaultValue;
+        }
+    };
+
+    int page = parseIntParam("page", 1, std::numeric_limits<int>::max(), 1);
+    int pageSize = parseIntParam("pageSize", 1, 100, 20);
     int offset = (page - 1) * pageSize;
-    std::string offsetStr = std::to_string(offset);
 
     // 3.查询文档
     auto db = drogon::app().getDbClient();
@@ -399,7 +401,7 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
-                        userIdStr, pageSizeStr, offsetStr);  // 直接使用预转换的字符串
+                        userIdStr, std::to_string(pageSize), std::to_string(offset));
             },
             [=](const drogon::orm::DrogonDbException &e) mutable {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),

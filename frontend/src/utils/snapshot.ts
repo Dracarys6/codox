@@ -16,41 +16,58 @@ export async function calculateSHA256(data: string): Promise<string> {
 
 /**
  * 上传快照到 MinIO
- * 注意：这里需要后端提供上传接口，或者直接使用 MinIO 的 presigned URL
- * 目前先返回一个占位符，实际实现需要根据后端接口调整
+ * 通过后端接口上传文件到 MinIO，返回文件 URL
  */
 export async function uploadSnapshot(
     docId: number,
     snapshot: number[],
     sha256: string
 ): Promise<string> {
-    // TODO: 实现实际上传逻辑
-    // 方案1：调用后端接口上传
-    // 方案2：获取 presigned URL 后直接上传到 MinIO
-    // 目前返回一个占位符 URL
-    const snapshotBlob = new Blob([new Uint8Array(snapshot)], { type: 'application/octet-stream' });
-    const snapshotJson = JSON.stringify(Array.from(new Uint8Array(snapshot)));
+    // 将快照数据转换为 base64
+    const uint8Array = new Uint8Array(snapshot);
+    console.log('uploadSnapshot: Converting to base64, uint8Array length:', uint8Array.length);
+    console.log('uploadSnapshot: First 20 bytes:', Array.from(uint8Array.slice(0, 20)));
     
-    // 临时方案：使用 base64 编码存储在 URL 中（仅用于开发测试）
-    // 生产环境应该上传到 MinIO
-    const base64Snapshot = btoa(snapshotJson);
-    return `data:application/json;base64,${base64Snapshot}`;
+    const snapshotBlob = new Blob([uint8Array], { type: 'application/octet-stream' });
+    console.log('uploadSnapshot: Blob size:', snapshotBlob.size);
     
-    // 实际实现示例（需要后端支持）：
-    // const formData = new FormData();
-    // formData.append('file', snapshotBlob);
-    // formData.append('doc_id', docId.toString());
-    // formData.append('sha256', sha256);
-    // 
-    // const response = await fetch('/api/upload/snapshot', {
-    //     method: 'POST',
-    //     body: formData,
-    //     headers: {
-    //         'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-    //     }
-    // });
-    // 
-    // const data = await response.json();
-    // return data.url;
+    const base64Snapshot = await blobToBase64(snapshotBlob);
+    console.log('uploadSnapshot: Base64 length:', base64Snapshot.length);
+    console.log('uploadSnapshot: Base64 first 50 chars:', base64Snapshot.substring(0, 50));
+    
+    // 生成文件名
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `snapshot-${timestamp}-${sha256.substring(0, 8)}.bin`;
+    
+    // 调用后端上传接口
+    const { apiClient } = await import('../api/client');
+    console.log('uploadSnapshot: Calling backend upload API...');
+    const result = await apiClient.uploadSnapshot(docId, {
+        data: base64Snapshot,
+        filename: filename
+    });
+    
+    console.log('uploadSnapshot: Backend returned URL:', result.snapshot_url);
+    return result.snapshot_url;
+}
+
+/**
+ * 将 Blob 转换为 base64 字符串
+ */
+function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+                // 移除 data URL 前缀（data:application/octet-stream;base64,）
+                const base64 = reader.result.split(',')[1];
+                resolve(base64);
+            } else {
+                reject(new Error('Failed to convert blob to base64'));
+            }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
 }
 
