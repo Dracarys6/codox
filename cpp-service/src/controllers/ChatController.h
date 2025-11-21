@@ -14,6 +14,8 @@ public:
     ADD_METHOD_TO(ChatController::getMessages, "/api/chat/rooms/{id}/messages", Get, "JwtAuthFilter");
     ADD_METHOD_TO(ChatController::sendMessage, "/api/chat/rooms/{id}/messages", Post, "JwtAuthFilter");
     ADD_METHOD_TO(ChatController::markMessageRead, "/api/chat/messages/{id}/read", Post, "JwtAuthFilter");
+    ADD_METHOD_TO(ChatController::uploadFile, "/api/chat/rooms/{id}/files", Post, "JwtAuthFilter");
+    ADD_METHOD_TO(ChatController::downloadFile, "/api/chat/messages/{id}/file", Get, "JwtAuthFilter");
     METHOD_LIST_END
 
     // 创建聊天室
@@ -33,6 +35,12 @@ public:
 
     // 将信息标记为已读
     void markMessageRead(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
+    // 聊天文件上传
+    void uploadFile(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
+    // 聊天文件下载
+    void downloadFile(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 辅助函数:在数据库中创建聊天室
     void createRoomInDb(int userId, const std::string& name, const std::string& type, int docId,

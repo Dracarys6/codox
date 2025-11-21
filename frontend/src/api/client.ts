@@ -27,8 +27,6 @@ import {
     ChatMessage,
     NotificationListResponse,
     NotificationFilterParams,
-    NotificationSetting,
-    UpdateNotificationSettingRequest,
 } from '../types';
 
 // 开发环境：使用相对路径利用 Vite 代理
@@ -107,6 +105,7 @@ class ApiClient {
     private clearAuth() {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
+        localStorage.removeItem('chat_token');
         localStorage.removeItem('user');
     }
 
@@ -129,6 +128,8 @@ class ApiClient {
         // 保存 Token 和用户信息
         localStorage.setItem('access_token', response.data.access_token);
         localStorage.setItem('refresh_token', response.data.refresh_token);
+        const chatToken = response.data.chat_token || response.data.access_token;
+        localStorage.setItem('chat_token', chatToken);
         localStorage.setItem('user', JSON.stringify(response.data.user));
 
         return response.data;
@@ -140,8 +141,10 @@ class ApiClient {
     async refreshToken(data: RefreshTokenRequest): Promise<RefreshTokenResponse> {
         const response = await this.client.post<RefreshTokenResponse>('/auth/refresh', data);
 
-        // 更新 access_token
+        // 更新 access_token / chat_token
         localStorage.setItem('access_token', response.data.access_token);
+        const chatToken = response.data.chat_token || response.data.access_token;
+        localStorage.setItem('chat_token', chatToken);
 
         return response.data;
     }
@@ -412,22 +415,6 @@ class ApiClient {
         return response.data;
     }
 
-    /**
-     * 获取通知设置
-     */
-    async getNotificationSettings(): Promise<NotificationSetting[]> {
-        const response = await this.client.get<NotificationSetting[]>('/notification-settings');
-        return response.data;
-    }
-
-    /**
-     * 更新指定通知类型的设置
-     */
-    async updateNotificationSetting(type: string, data: UpdateNotificationSettingRequest): Promise<NotificationSetting> {
-        const response = await this.client.put<NotificationSetting>(`/notification-settings/${type}`, data);
-        return response.data;
-    }
-
     // ========== 搜索相关 API ==========
 
     /**
@@ -494,6 +481,32 @@ class ApiClient {
      */
     async markChatMessageRead(messageId: number): Promise<{ message: string }> {
         const response = await this.client.post<{ message: string }>(`/chat/messages/${messageId}/read`, {});
+        return response.data;
+    }
+
+    /**
+     * 上传聊天文件
+     */
+    async uploadChatFile(roomId: number, formData: FormData): Promise<ChatMessage> {
+        const response = await this.client.post<ChatMessage>(
+            `/chat/rooms/${roomId}/files`,
+            formData,
+            {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            }
+        );
+        return response.data;
+    }
+
+    /**
+     * 下载聊天文件
+     */
+    async downloadChatFile(messageId: number): Promise<Blob> {
+        const response = await this.client.get(`/chat/messages/${messageId}/file`, {
+            responseType: 'blob',
+        });
         return response.data;
     }
 

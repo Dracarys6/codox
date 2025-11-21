@@ -42,6 +42,7 @@ export interface LoginRequest {
 export interface LoginResponse {
     access_token: string;
     refresh_token: string;
+    chat_token?: string;
     user: {
         id: number;
         email: string;
@@ -57,6 +58,7 @@ export interface RefreshTokenRequest {
 
 export interface RefreshTokenResponse {
     access_token: string;
+    chat_token?: string;
 }
 
 // 更新用户资料请求
@@ -210,19 +212,6 @@ export interface NotificationFilterParams {
     doc_id?: number;
     start_date?: string;
     end_date?: string;
-}
-
-export interface NotificationSetting {
-    notification_type: string;
-    email_enabled: boolean;
-    push_enabled: boolean;
-    in_app_enabled: boolean;
-}
-
-export interface UpdateNotificationSettingRequest {
-    email_enabled?: boolean;
-    push_enabled?: boolean;
-    in_app_enabled?: boolean;
 }
 
 // 版本相关类型

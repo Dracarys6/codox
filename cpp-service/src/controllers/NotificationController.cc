@@ -30,7 +30,7 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
             parsed = std::max(minValue, parsed);
             parsed = std::min(maxValue, parsed);
             return parsed;
-    } catch (...) {
+        } catch (...) {
             return defaultValue;
         }
     };
@@ -45,7 +45,7 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
         try {
             pageSize = std::stoi(pageSizeParam);
             pageSize = std::max(1, std::min(100, pageSize));
-    } catch (...) {
+        } catch (...) {
             pageSize = 20;
         }
     }
@@ -78,24 +78,25 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
     auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     int offset = (page - 1) * pageSize;
 
-    std::string sql =
-            "SELECT n.id, n.type, n.payload::text AS payload_text, n.is_read, n.created_at "
+    std::string baseQuery =
             "FROM notification n "
-            "LEFT JOIN notification_setting ns ON ns.user_id = n.user_id AND ns.notification_type = n.type "
             "WHERE n.user_id = $1::bigint "
             "  AND ($2::boolean = FALSE OR n.is_read = FALSE) "
             "  AND ($3 = '' OR n.type = $3) "
             "  AND ($4 = '' OR (n.payload->>'doc_id') = $4) "
             "  AND ($5 = '' OR n.created_at >= $5::timestamptz) "
-            "  AND ($6 = '' OR n.created_at <= $6::timestamptz) "
-            "  AND COALESCE(ns.in_app_enabled, TRUE) = TRUE "
-            "ORDER BY n.created_at DESC "
-            "LIMIT $7::integer OFFSET $8::integer";
+            "  AND ($6 = '' OR n.created_at <= $6::timestamptz) ";
+
+    std::string listSql = "SELECT n.id, n.type, n.payload::text AS payload_text, n.is_read, n.created_at " + baseQuery +
+                          "ORDER BY n.created_at DESC "
+                          "LIMIT $7::integer OFFSET $8::integer";
+
+    std::string countSql = "SELECT COUNT(*) AS total " + baseQuery;
 
     db->execSqlAsync(
-            sql,
+            listSql,
             [=](const drogon::orm::Result& r) {
-                Json::Value responseJson;
+                auto responseJson = std::make_shared<Json::Value>();
                 Json::Value notificationsArray(Json::arrayValue);
                 Json::CharReaderBuilder readerBuilder;
 
@@ -122,16 +123,30 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
                     notificationsArray.append(notificationJson);
                 }
 
-                responseJson["notifications"] = notificationsArray;
-                responseJson["page"] = page;
-                responseJson["page_size"] = pageSize;
-                responseJson["filters"]["type"] = typeFilter;
-                responseJson["filters"]["doc_id"] = docIdFilter;
-                responseJson["filters"]["start_date"] = startDate;
-                responseJson["filters"]["end_date"] = endDate;
-                responseJson["filters"]["unread_only"] = unreadOnly;
+                (*responseJson)["notifications"] = notificationsArray;
+                (*responseJson)["page"] = page;
+                (*responseJson)["page_size"] = pageSize;
+                (*responseJson)["filters"]["type"] = typeFilter;
+                (*responseJson)["filters"]["doc_id"] = docIdFilter;
+                (*responseJson)["filters"]["start_date"] = startDate;
+                (*responseJson)["filters"]["end_date"] = endDate;
+                (*responseJson)["filters"]["unread_only"] = unreadOnly;
 
-                ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                db->execSqlAsync(
+                        countSql,
+                        [=](const drogon::orm::Result& countResult) {
+                            int total = 0;
+                            if (!countResult.empty()) {
+                                total = countResult[0]["total"].as<int>();
+                            }
+                            (*responseJson)["total"] = total;
+                            ResponseUtils::sendSuccess(*callbackPtr, *responseJson, k200OK);
+                        },
+                        [=](const drogon::orm::DrogonDbException& e) {
+                            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                                     k500InternalServerError);
+                        },
+                        userIdStr, unreadOnly ? "true" : "false", typeFilter, docIdFilter, startDate, endDate);
             },
             [=](const drogon::orm::DrogonDbException& e) {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
@@ -231,9 +246,8 @@ void NotificationController::getUnreadCount(const HttpRequestPtr& req,
     auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     db->execSqlAsync(
             "SELECT COUNT(*) as count "
-            "FROM notification n "
-            "LEFT JOIN notification_setting ns ON ns.user_id = n.user_id AND ns.notification_type = n.type "
-            "WHERE n.user_id = $1::bigint AND n.is_read = FALSE AND COALESCE(ns.in_app_enabled, TRUE) = TRUE",
+            "FROM notification "
+            "WHERE user_id = $1::bigint AND is_read = FALSE",
             [=](const drogon::orm::Result& r) {
                 Json::Value responseJson;
                 responseJson["unread_count"] = r[0]["count"].as<int>();

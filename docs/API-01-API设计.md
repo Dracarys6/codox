@@ -74,6 +74,8 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 - `GET /api/chat/rooms/{id}/messages` — 获取聊天室消息历史，支持分页（`page`、`page_size`）和游标分页（`before_id`），返回消息内容、发送者信息、已读状态等。
 - `POST /api/chat/rooms/{id}/messages` — 发送消息，请求体需包含 `content` 或 `file_url` 至少一个，可选 `message_type`（默认 `text`）、`reply_to`（回复消息ID）。
 - `POST /api/chat/messages/{id}/read` — 标记指定消息为已读，自动更新聊天室成员的 `last_read_at`。
+- `POST /api/chat/rooms/{id}/files` — 上传聊天附件（multipart/form-data，单文件≤20MB，支持 `jpg/jpeg/png/gif/webp/bmp/svg/pdf/doc/docx/ppt/pptx/xls/xlsx/txt/md/zip`），自动写入 `chat_message` 并返回可消费的消息体。
+- `GET /api/chat/messages/{id}/file` — 下载指定消息的附件（需聊天成员身份，返回 Blob/流，前端将结果转换为预览或下载链接）。
 
 > ✅ 实时通讯模块已完成实现，支持三种聊天室类型、消息发送/接收、已读状态管理等功能。
 

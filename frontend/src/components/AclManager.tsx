@@ -5,6 +5,8 @@ import { DocumentAcl, AclEntry, UpdateAclRequest } from '../types';
 interface AclManagerProps {
     docId: number;
     onUpdate?: () => void;
+    onLoaded?: (acl: DocumentAcl | null) => void;
+    isOwner?: boolean;
 }
 
 const PERMISSION_INFO = {
@@ -37,7 +39,7 @@ const PERMISSION_INFO = {
     },
 };
 
-export function AclManager({ docId, onUpdate }: AclManagerProps) {
+export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclManagerProps) {
     const [acl, setAcl] = useState<DocumentAcl | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -46,6 +48,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
     const [newUserId, setNewUserId] = useState('');
     const [newPermission, setNewPermission] = useState<'editor' | 'viewer'>('editor');
     const [searchTerm, setSearchTerm] = useState('');
+    const [forbidden, setForbidden] = useState(false);
 
     useEffect(() => {
         loadAcl();
@@ -65,9 +68,17 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
             setError(null);
             const aclData = await apiClient.getDocumentAcl(docId);
             setAcl(aclData);
+            setForbidden(false);
+            onLoaded?.(aclData);
         } catch (err: any) {
-            setError(err.response?.data?.error || '加载权限列表失败');
+            if (err.response?.status === 403) {
+                setForbidden(true);
+                setError('仅文档所有者可以查看或管理权限');
+            } else {
+                setError(err.response?.data?.error || '加载权限列表失败');
+            }
             console.error('Failed to load ACL:', err);
+            onLoaded?.(null);
         } finally {
             setLoading(false);
         }
@@ -97,7 +108,10 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
         };
     }, [acl]);
 
+    const canManage = isOwner && !forbidden;
+
     const handleAddAcl = async () => {
+        if (!canManage) return;
         if (!newUserId.trim()) {
             setError('请输入用户ID');
             return;
@@ -140,6 +154,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
     };
 
     const handleUpdatePermission = async (userId: number, permission: 'owner' | 'editor' | 'viewer') => {
+        if (!canManage) return;
         try {
             setSaving(true);
             setError(null);
@@ -165,6 +180,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
     };
 
     const handleRemoveAcl = async (userId: number, userName: string) => {
+        if (!canManage) return;
         if (!window.confirm(`确定要移除用户 "${userName}" 的权限吗？`)) {
             return;
         }
@@ -215,14 +231,16 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
         );
     }
 
+    const ownerEntry = acl?.acl.find((entry) => entry.permission === 'owner');
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 w-full min-w-0">
             {/* 标题和统计 */}
             <div>
                 <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-                        <div className="w-1 h-8 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full"></div>
-                        <h3 className="text-xl font-bold text-gray-900">访问权限</h3>
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-1 h-8 bg-gradient-to-b from-blue-500 to-purple-500 rounded-full flex-shrink-0"></div>
+                        <h3 className="text-xl font-bold text-gray-900 truncate">访问权限</h3>
                     </div>
                     {stats.total > 0 && (
                         <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -235,16 +253,16 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
 
                 {/* 统计卡片 */}
                 {stats.total > 0 && (
-                    <div className="grid grid-cols-3 gap-2 mb-4">
-                        <div className="px-3 py-2 bg-purple-50 rounded-lg border border-purple-100">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+                        <div className="px-3 py-2 bg-purple-50 rounded-lg border border-purple-100 min-w-0">
                             <div className="text-xs text-purple-600 font-medium">所有者</div>
                             <div className="text-lg font-bold text-purple-700">{stats.owners}</div>
                         </div>
-                        <div className="px-3 py-2 bg-blue-50 rounded-lg border border-blue-100">
+                        <div className="px-3 py-2 bg-blue-50 rounded-lg border border-blue-100 min-w-0">
                             <div className="text-xs text-blue-600 font-medium">编辑者</div>
                             <div className="text-lg font-bold text-blue-700">{stats.editors}</div>
                         </div>
-                        <div className="px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="px-3 py-2 bg-gray-50 rounded-lg border border-gray-100 min-w-0">
                             <div className="text-xs text-gray-600 font-medium">查看者</div>
                             <div className="text-lg font-bold text-gray-700">{stats.viewers}</div>
                         </div>
@@ -295,52 +313,86 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
             )}
 
             {/* 添加新权限 */}
-            <div className="p-5 bg-gradient-to-br from-blue-50/50 to-purple-50/50 rounded-2xl border-2 border-blue-200/30 shadow-sm">
-                <h4 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <i className="fa fa-user-plus text-blue-600"></i>
-                    添加用户权限
-                </h4>
-                <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1">
-                    <input
-                        type="number"
-                        value={newUserId}
-                        onChange={(e) => setNewUserId(e.target.value)}
-                            placeholder="输入用户ID"
-                            min="1"
-                            className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm placeholder:text-gray-400"
-                    />
+            {ownerEntry && (
+                <div className="p-5 bg-white rounded-2xl border-2 border-gray-100 shadow-sm">
+                    <div className="flex items-center gap-3 mb-3">
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold flex items-center justify-center text-lg">
+                            {getInitials(ownerEntry)}
+                        </div>
+                        <div>
+                            <p className="text-sm text-gray-500">文档所有者</p>
+                            <p className="text-lg font-semibold text-gray-900">{getDisplayName(ownerEntry)}</p>
+                            {ownerEntry.email && <p className="text-xs text-gray-500">{ownerEntry.email}</p>}
+                        </div>
                     </div>
-                    <select
-                        value={newPermission}
-                        onChange={(e) => setNewPermission(e.target.value as 'editor' | 'viewer')}
-                        className="px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm font-medium"
-                    >
-                        <option value="editor">✏️ 编辑者</option>
-                        <option value="viewer">👁️ 查看者</option>
-                    </select>
-                    <button
-                        onClick={handleAddAcl}
-                        disabled={saving || !newUserId.trim()}
-                        className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-                    >
-                        {saving ? (
-                            <>
-                                <i className="fa fa-spinner fa-spin"></i>
-                                添加中...
-                            </>
-                        ) : (
-                            <>
-                                <i className="fa fa-plus"></i>
-                                添加
-                            </>
-                        )}
-                    </button>
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                        所有者始终拥有文档的完全控制权限，无法通过 ACL 面板移除。如需转移所有者，请在文档设置中完成。
+                    </p>
                 </div>
-                <p className="mt-3 text-xs text-gray-500">
-                    {newPermission === 'editor' ? PERMISSION_INFO.editor.description : PERMISSION_INFO.viewer.description}
-                </p>
-            </div>
+            )}
+
+            {canManage ? (
+                <div className="p-5 rounded-2xl border-2 bg-gradient-to-br from-blue-50/50 to-purple-50/50 border-blue-200/30 shadow-sm">
+                    <h4 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <i className="fa fa-user-plus text-blue-600"></i>
+                        添加用户权限
+                    </h4>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <div className="flex-1">
+                            <input
+                                type="number"
+                                value={newUserId}
+                                onChange={(e) => setNewUserId(e.target.value)}
+                                placeholder="输入用户ID"
+                                min="1"
+                                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm placeholder:text-gray-400"
+                                disabled={!canManage}
+                            />
+                        </div>
+                        <select
+                            value={newPermission}
+                            onChange={(e) => setNewPermission(e.target.value as 'editor' | 'viewer')}
+                            className="px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm font-medium"
+                            disabled={!canManage}
+                        >
+                            <option value="editor">✏️ 编辑者</option>
+                            <option value="viewer">👁️ 查看者</option>
+                        </select>
+                        <button
+                            onClick={handleAddAcl}
+                            disabled={saving || !newUserId.trim()}
+                            className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                        >
+                            {saving ? (
+                                <>
+                                    <i className="fa fa-spinner fa-spin"></i>
+                                    添加中...
+                                </>
+                            ) : (
+                                <>
+                                    <i className="fa fa-plus"></i>
+                                    添加
+                                </>
+                            )}
+                        </button>
+                    </div>
+                    <p className="mt-3 text-xs text-gray-500">
+                        {newPermission === 'editor'
+                            ? PERMISSION_INFO.editor.description
+                            : PERMISSION_INFO.viewer.description}
+                    </p>
+                </div>
+            ) : (
+                <div className="p-5 rounded-2xl border-2 bg-gray-50 border-gray-200 shadow-sm">
+                    <h4 className="text-sm font-bold text-gray-800 mb-2 flex items-center gap-2">
+                        <i className="fa fa-lock text-gray-500"></i>
+                        权限信息
+                    </h4>
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                        只有文档所有者可以添加或修改协作者。您可以查看当前的协作者列表，如需调整请联系文档所有者。
+                    </p>
+                </div>
+            )}
 
             {/* 权限列表 */}
             {acl && filteredAcl.length > 0 ? (
@@ -384,7 +436,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
-                                    {!isOwner ? (
+                                    {!isOwner && canManage ? (
                                     <>
                                         <select
                                             value={entry.permission}
@@ -394,7 +446,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
                                                     e.target.value as 'owner' | 'editor' | 'viewer'
                                                 )
                                             }
-                                            disabled={saving}
+                                            disabled={saving || !canManage}
                                                 className="px-3 py-2 text-sm font-medium border-2 border-gray-200 rounded-lg focus:ring-4 focus:ring-blue-200 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed bg-white transition-all duration-200"
                                         >
                                             <option value="editor">✏️ 编辑者</option>
@@ -402,7 +454,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
                                         </select>
                                         <button
                                                 onClick={() => handleRemoveAcl(entry.user_id, displayName)}
-                                            disabled={saving}
+                                            disabled={saving || !canManage}
                                                 className="px-3 py-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border-2 border-red-200 hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2"
                                                 title="移除权限"
                                         >
@@ -413,7 +465,7 @@ export function AclManager({ docId, onUpdate }: AclManagerProps) {
                                 ) : (
                                         <div className="px-3 py-2 text-sm font-medium text-gray-500 bg-gray-100 rounded-lg border-2 border-gray-200 flex items-center gap-2">
                                             <i className="fa fa-lock"></i>
-                                            <span>不可修改</span>
+                                            <span>{isOwner ? '所有者不可修改' : '仅所有者可修改'}</span>
                                         </div>
                                 )}
                                 </div>

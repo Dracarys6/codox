@@ -1,14 +1,141 @@
 #include "ChatController.h"
 
+#include <drogon/MultiPart.h>
 #include <drogon/drogon.h>
 #include <drogon/orm/DbClient.h>
 #include <json/json.h>
 
+#include <algorithm>
+#include <cctype>
+#include <chrono>
+#include <cstring>
+#include <fstream>
+#include <iomanip>
+#include <iterator>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
+#include "../utils/MinIOClient.h"
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
+
+namespace {
+constexpr size_t kMaxChatFileSize = 20 * 1024 * 1024;  // 20MB
+const std::unordered_map<std::string, std::string> kAllowedFileTypes = {
+        {"txt", "text/plain"},
+        {"md", "text/markdown"},
+        {"pdf", "application/pdf"},
+        {"doc", "application/msword"},
+        {"docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+        {"ppt", "application/vnd.ms-powerpoint"},
+        {"pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+        {"xls", "application/vnd.ms-excel"},
+        {"xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+        {"jpg", "image/jpeg"},
+        {"jpeg", "image/jpeg"},
+        {"png", "image/png"},
+        {"gif", "image/gif"},
+        {"webp", "image/webp"},
+        {"bmp", "image/bmp"},
+        {"svg", "image/svg+xml"},
+        {"zip", "application/zip"}};
+const std::string kAllowedFileTypesText =
+        "jpg, jpeg, png, gif, webp, bmp, svg, pdf, doc, docx, ppt, pptx, xls, xlsx, txt, md, zip";
+
+std::string sanitizeFileName(const std::string& input) {
+    if (input.empty()) {
+        return "attachment.bin";
+    }
+    std::string result;
+    result.reserve(input.size());
+    for (char ch : input) {
+        if (std::isalnum(static_cast<unsigned char>(ch)) || ch == '.' || ch == '-' || ch == '_') {
+            result.push_back(ch);
+        } else {
+            result.push_back('_');
+        }
+    }
+    if (result.find('.') == std::string::npos) {
+        result.append(".bin");
+    }
+    return result;
+}
+
+std::string normalizeContentType(const std::string& contentType) {
+    if (contentType.empty()) {
+        return "application/octet-stream";
+    }
+    return contentType;
+}
+
+std::string getFileExtension(const std::string& fileName) {
+    auto pos = fileName.find_last_of('.');
+    if (pos == std::string::npos || pos + 1 >= fileName.size()) {
+        return "";
+    }
+    std::string ext = fileName.substr(pos + 1);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char ch) { return std::tolower(ch); });
+    return ext;
+}
+
+std::string buildChatFileObjectName(int roomId, int userId, const std::string& fileName) {
+    auto now = std::chrono::system_clock::now();
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    std::ostringstream oss;
+    oss << "chat/room-" << roomId << "/" << userId << "-" << millis << "-" << fileName;
+    return oss.str();
+}
+
+std::string buildChatFileDownloadUrl(int messageId) {
+    return "/api/chat/messages/" + std::to_string(messageId) + "/file";
+}
+
+std::string fileUrlForClient(const std::string& storedValue, int messageId) {
+    if (storedValue.empty()) {
+        return "";
+    }
+    if (storedValue.rfind("http://", 0) == 0 || storedValue.rfind("https://", 0) == 0) {
+        return storedValue;
+    }
+    return buildChatFileDownloadUrl(messageId);
+}
+
+Json::Value buildMessageJsonFromRow(const drogon::orm::Row& row) {
+    Json::Value messageJson;
+    messageJson["id"] = row["id"].as<int>();
+    messageJson["sender_id"] = row["sender_id"].as<int>();
+
+    if (!row["content"].isNull()) {
+        messageJson["content"] = row["content"].as<std::string>();
+    }
+    if (!row["message_type"].isNull()) {
+        messageJson["message_type"] = row["message_type"].as<std::string>();
+    }
+    if (!row["file_url"].isNull()) {
+        const auto stored = row["file_url"].as<std::string>();
+        if (!stored.empty()) {
+            messageJson["file_url"] = fileUrlForClient(stored, row["id"].as<int>());
+        }
+    }
+    if (!row["reply_to"].isNull()) {
+        messageJson["reply_to"] = row["reply_to"].as<int>();
+    }
+    if (!row["created_at"].isNull()) {
+        messageJson["created_at"] = row["created_at"].as<std::string>();
+    }
+    if (!row["nickname"].isNull()) {
+        messageJson["sender_nickname"] = row["nickname"].as<std::string>();
+    }
+    if (!row["avatar_url"].isNull()) {
+        messageJson["sender_avatar"] = row["avatar_url"].as<std::string>();
+    }
+    if (!row["is_read"].isNull()) {
+        messageJson["is_read"] = row["is_read"].as<bool>();
+    }
+    return messageJson;
+}
+}  // namespace
 
 void ChatController::createRoom(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.获取user_id
@@ -432,29 +559,7 @@ void ChatController::getMessages(const HttpRequestPtr& req, std::function<void(c
                                 Json::Value responseJson;
                                 Json::Value messagesArray(Json::arrayValue);
                                 for (const auto& row : r) {
-                                    Json::Value messageJson;
-                                    messageJson["id"] = row["id"].as<int>();
-                                    messageJson["sender_id"] = row["sender_id"].as<int>();
-                                    if (!row["content"].isNull()) {
-                                        messageJson["content"] = row["content"].as<std::string>();
-                                    }
-                                    messageJson["message_type"] = row["message_type"].as<std::string>();
-                                    if (!row["file_url"].isNull()) {
-                                        messageJson["file_url"] = row["file_url"].as<std::string>();
-                                    }
-                                    if (!row["reply_to"].isNull()) {
-                                        messageJson["reply_to"] = row["reply_to"].as<int>();
-                                    }
-                                    messageJson["created_at"] = row["created_at"].as<std::string>();
-                                    if (!row["nickname"].isNull()) {
-                                        messageJson["sender_nickname"] = row["nickname"].as<std::string>();
-                                    }
-                                    if (!row["avatar_url"].isNull()) {
-                                        messageJson["sender_avatar"] = row["avatar_url"].as<std::string>();
-                                    }
-                                    messageJson["is_read"] = row["is_read"].as<bool>();
-
-                                    messagesArray.append(messageJson);
+                                    messagesArray.append(buildMessageJsonFromRow(row));
                                 }
 
                                 responseJson["messages"] = messagesArray;
@@ -487,29 +592,7 @@ void ChatController::getMessages(const HttpRequestPtr& req, std::function<void(c
                                 Json::Value responseJson;
                                 Json::Value messagesArray(Json::arrayValue);
                                 for (const auto& row : r) {
-                                    Json::Value messageJson;
-                                    messageJson["id"] = row["id"].as<int>();
-                                    messageJson["sender_id"] = row["sender_id"].as<int>();
-                                    if (!row["content"].isNull()) {
-                                        messageJson["content"] = row["content"].as<std::string>();
-                                    }
-                                    messageJson["message_type"] = row["message_type"].as<std::string>();
-                                    if (!row["file_url"].isNull()) {
-                                        messageJson["file_url"] = row["file_url"].as<std::string>();
-                                    }
-                                    if (!row["reply_to"].isNull()) {
-                                        messageJson["reply_to"] = row["reply_to"].as<int>();
-                                    }
-                                    messageJson["created_at"] = row["created_at"].as<std::string>();
-                                    if (!row["nickname"].isNull()) {
-                                        messageJson["sender_nickname"] = row["nickname"].as<std::string>();
-                                    }
-                                    if (!row["avatar_url"].isNull()) {
-                                        messageJson["sender_avatar"] = row["avatar_url"].as<std::string>();
-                                    }
-                                    messageJson["is_read"] = row["is_read"].as<bool>();
-
-                                    messagesArray.append(messageJson);
+                                    messagesArray.append(buildMessageJsonFromRow(row));
                                 }
 
                                 responseJson["messages"] = messagesArray;
@@ -625,7 +708,7 @@ void ChatController::sendMessage(const HttpRequestPtr& req, std::function<void(c
                                         }
                                         responseJson["message_type"] = messageType;
                                         if (!fileUrl.empty()) {
-                                            responseJson["file_url"] = fileUrl;
+                                            responseJson["file_url"] = fileUrlForClient(fileUrl, messageId);
                                         }
                                         if (replyTo > 0) {
                                             responseJson["reply_to"] = replyTo;
@@ -716,4 +799,272 @@ void ChatController::markMessageRead(const HttpRequestPtr& req,
                                          k500InternalServerError);
             },
             messageIdStr, userIdStr);
+}
+
+void ChatController::uploadFile(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Room ID is required", k400BadRequest);
+        return;
+    }
+
+    int roomId;
+    try {
+        roomId = std::stoi(routingParams[0]);
+        if (roomId <= 0) {
+            throw std::runtime_error("invalid");
+        }
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid room ID", k400BadRequest);
+        return;
+    }
+
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "Unauthorized", k401Unauthorized);
+        return;
+    }
+
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    drogon::MultiPartParser parser;
+    if (parser.parse(req) != 0) {
+        ResponseUtils::sendError(callback, "Failed to parse uploaded file", k400BadRequest);
+        return;
+    }
+    const auto& files = parser.getFiles();
+    if (files.empty()) {
+        ResponseUtils::sendError(callback, "No file uploaded", k400BadRequest);
+        return;
+    }
+
+    const auto& uploadedFile = files.front();
+    size_t fileSize = uploadedFile.fileLength();
+    if (fileSize == 0) {
+        ResponseUtils::sendError(callback, "Uploaded file is empty", k400BadRequest);
+        return;
+    }
+    if (fileSize > kMaxChatFileSize) {
+        ResponseUtils::sendError(callback, "File is too large (max 20MB)", k400BadRequest);
+        return;
+    }
+
+    const auto fileContent = uploadedFile.fileContent();
+    auto buffer = std::make_shared<std::vector<char>>(fileContent.size());
+    if (!buffer->empty()) {
+        std::memcpy(buffer->data(), fileContent.data(), fileContent.size());
+    }
+
+    std::string originalName = uploadedFile.getFileName();
+    if (originalName.empty()) {
+        originalName = "chat-attachment.bin";
+    }
+    std::string sanitizedName = sanitizeFileName(originalName);
+    auto extension = getFileExtension(sanitizedName);
+    auto allowedTypeIt = kAllowedFileTypes.find(extension);
+    if (allowedTypeIt == kAllowedFileTypes.end()) {
+        ResponseUtils::sendError(callback, "Unsupported file type. Allowed: " + kAllowedFileTypesText, k400BadRequest);
+        return;
+    }
+    std::string contentType = allowedTypeIt->second;
+    std::string objectName = buildChatFileObjectName(roomId, userId, sanitizedName);
+
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
+    auto db = drogon::app().getDbClient();
+    if (!db) {
+        ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+        return;
+    }
+
+    db->execSqlAsync(
+            "SELECT id FROM chat_room_member WHERE room_id = $1::bigint AND user_id = $2::bigint",
+            [=](const drogon::orm::Result& r) {
+                if (r.empty()) {
+                    ResponseUtils::sendError(*callbackPtr, "You are not a member of this room", k403Forbidden);
+                    return;
+                }
+
+                MinIOClient::uploadFile(
+                        objectName, buffer->data(), buffer->size(), contentType,
+                        [=](const std::string&) {
+                            auto dbInner = drogon::app().getDbClient();
+                            if (!dbInner) {
+                                ResponseUtils::sendError(*callbackPtr, "Database not available",
+                                                         k500InternalServerError);
+                                return;
+                            }
+
+                            dbInner->execSqlAsync(
+                                    "INSERT INTO chat_message (room_id, sender_id, content, message_type, file_url, "
+                                    "created_at) "
+                                    "VALUES ($1::bigint, $2::bigint, $3, $4, $5, NOW()) RETURNING id, created_at",
+                                    [=](const drogon::orm::Result& insertResult) {
+                                        if (insertResult.empty()) {
+                                            ResponseUtils::sendError(*callbackPtr, "Failed to create message",
+                                                                     k500InternalServerError);
+                                            return;
+                                        }
+
+                                        int messageId = insertResult[0]["id"].as<int>();
+                                        std::string createdAt = insertResult[0]["created_at"].as<std::string>();
+
+                                        dbInner->execSqlAsync(
+                                                "INSERT INTO chat_message_read (message_id, user_id, read_at) "
+                                                "SELECT $1::bigint, user_id, NOW() "
+                                                "FROM chat_room_member "
+                                                "WHERE room_id = $2::bigint AND user_id != $3::bigint",
+                                                [=](const drogon::orm::Result&) {
+                                                    Json::Value responseJson;
+                                                    responseJson["id"] = messageId;
+                                                    responseJson["room_id"] = roomId;
+                                                    responseJson["sender_id"] = userId;
+                                                    responseJson["content"] = originalName;
+                                                    responseJson["message_type"] = contentType;
+                                                    responseJson["file_url"] = buildChatFileDownloadUrl(messageId);
+                                                    responseJson["created_at"] = createdAt;
+                                                    responseJson["is_read"] = false;
+                                                    ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                                                },
+                                                [=](const drogon::orm::DrogonDbException&) {
+                                                    Json::Value responseJson;
+                                                    responseJson["id"] = messageId;
+                                                    responseJson["room_id"] = roomId;
+                                                    responseJson["sender_id"] = userId;
+                                                    responseJson["content"] = originalName;
+                                                    responseJson["message_type"] = contentType;
+                                                    responseJson["file_url"] = buildChatFileDownloadUrl(messageId);
+                                                    responseJson["created_at"] = createdAt;
+                                                    responseJson["is_read"] = false;
+                                                    ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                                                },
+                                                std::to_string(messageId), std::to_string(roomId),
+                                                std::to_string(userId));
+                                    },
+                                    [=](const drogon::orm::DrogonDbException& e) {
+                                        ResponseUtils::sendError(*callbackPtr,
+                                                                 "Database error: " + std::string(e.base().what()),
+                                                                 k500InternalServerError);
+                                    },
+                                    std::to_string(roomId), std::to_string(userId), originalName, contentType,
+                                    objectName);
+                        },
+                        [=](const std::string& error) {
+                            ResponseUtils::sendError(*callbackPtr, "Failed to upload file: " + error,
+                                                     k500InternalServerError);
+                        });
+            },
+            [=](const drogon::orm::DrogonDbException& e) {
+                ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                         k500InternalServerError);
+            },
+            std::to_string(roomId), std::to_string(userId));
+}
+
+void ChatController::downloadFile(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Message ID is required", k400BadRequest);
+        return;
+    }
+
+    int messageId;
+    try {
+        messageId = std::stoi(routingParams[0]);
+        if (messageId <= 0) {
+            throw std::runtime_error("invalid");
+        }
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid message ID", k400BadRequest);
+        return;
+    }
+
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "Unauthorized", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    struct ChatFileInfo {
+        int roomId;
+        std::string objectName;
+        std::string filename;
+        std::string contentType;
+    };
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
+    auto db = drogon::app().getDbClient();
+    if (!db) {
+        ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+        return;
+    }
+
+    db->execSqlAsync(
+            "SELECT room_id, file_url, content, message_type FROM chat_message WHERE id = $1::bigint",
+            [=](const drogon::orm::Result& r) {
+                if (r.empty()) {
+                    ResponseUtils::sendError(*callbackPtr, "Message not found", k404NotFound);
+                    return;
+                }
+
+                const auto& row = r[0];
+                if (row["file_url"].isNull() || row["file_url"].as<std::string>().empty()) {
+                    ResponseUtils::sendError(*callbackPtr, "Message does not contain a file", k404NotFound);
+                    return;
+                }
+
+                ChatFileInfo info{row["room_id"].as<int>(), row["file_url"].as<std::string>(),
+                                  row["content"].isNull() ? "attachment.bin" : row["content"].as<std::string>(),
+                                  normalizeContentType(
+                                          row["message_type"].isNull() ? "" : row["message_type"].as<std::string>())};
+
+                db->execSqlAsync(
+                        "SELECT id FROM chat_room_member WHERE room_id = $1::bigint AND user_id = $2::bigint",
+                        [=](const drogon::orm::Result& memberResult) {
+                            if (memberResult.empty()) {
+                                ResponseUtils::sendError(*callbackPtr, "You are not a member of this room",
+                                                         k403Forbidden);
+                                return;
+                            }
+
+                            MinIOClient::downloadFile(
+                                    info.objectName,
+                                    [=](const std::vector<char>& data) {
+                                        auto resp = drogon::HttpResponse::newHttpResponse();
+                                        resp->setStatusCode(drogon::k200OK);
+                                        resp->setBody(std::string(data.begin(), data.end()));
+                                        resp->addHeader("Content-Type", info.contentType);
+                                        resp->addHeader("Content-Length", std::to_string(data.size()));
+                                        resp->addHeader(
+                                                "Content-Disposition",
+                                                "attachment; filename=\"" + sanitizeFileName(info.filename) + "\"");
+                                        (*callbackPtr)(resp);
+                                    },
+                                    [=](const std::string& error) {
+                                        ResponseUtils::sendError(*callbackPtr, "Failed to download file: " + error,
+                                                                 k500InternalServerError);
+                                    });
+                        },
+                        [=](const drogon::orm::DrogonDbException& e) {
+                            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                                     k500InternalServerError);
+                        },
+                        std::to_string(info.roomId), std::to_string(userId));
+            },
+            [=](const drogon::orm::DrogonDbException& e) {
+                ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                         k500InternalServerError);
+            },
+            std::to_string(messageId));
 }

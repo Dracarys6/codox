@@ -60,7 +60,7 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
             content: '',
             editorProps: {
                 attributes: {
-                    class: 'focus:outline-none prose prose-lg max-w-none',
+                    class: 'focus:outline-none prose prose-lg max-w-none min-h-[70vh] pb-16',
                 },
             },
             editable: true,

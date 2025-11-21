@@ -7,9 +7,11 @@
 #include <memory>
 #include <numeric>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 #include "../utils/DbUtils.h"
+#include "../utils/NotificationUtils.h"
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
 
@@ -344,7 +346,7 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
         try {
             int parsed = std::stoi(value);
             return std::max(minValue, std::min(maxValue, parsed));
-        } catch (...) {
+    } catch (...) {
             return defaultValue;
         }
     };
@@ -816,6 +818,7 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
         Json::Value aclArray = json["acl"];
         std::vector<std::pair<int, std::string>> aclItems;
         aclItems.reserve(aclArray.size());
+        std::unordered_map<int, std::string> newAclMap;
 
         for (const auto &item : aclArray) {
             if (!item.isMember("user_id") || !item.isMember("permission")) {
@@ -841,6 +844,7 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
                 return;
             }
             aclItems.emplace_back(aclUserId, permission);
+            newAclMap[aclUserId] = permission;
         }
 
         auto errorHandler = [=](const drogon::orm::DrogonDbException &e) {
@@ -850,50 +854,76 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
 
         auto fetchAcl = [=]() { queryAclAndRespond(db, docId, userId, callbackPtr); };
 
-        // 删除旧的 ACL（保留 owner）
+        auto previousAclMapPtr = std::make_shared<std::unordered_map<int, std::string>>();
+        auto newAclMapPtr = std::make_shared<std::unordered_map<int, std::string>>(std::move(newAclMap));
+
+        auto notifyPermissionChanges = [=](const std::unordered_map<int, std::string> &previousAcl) {
+            for (const auto &entry : *newAclMapPtr) {
+                auto it = previousAcl.find(entry.first);
+                if (it == previousAcl.end() || it->second != entry.second) {
+                    NotificationUtils::createPermissionChangeNotification(docId, entry.first, entry.second);
+                }
+            }
+        };
+
+        auto applyAclChanges = [=](const std::shared_ptr<std::unordered_map<int, std::string>> &previousAcl) {
         db->execSqlAsync(
-                "DELETE FROM doc_acl WHERE doc_id = $1::bigint AND permission != 'owner'",
-                [=](const drogon::orm::Result &) {
-                    if (aclItems.empty()) {
-                        fetchAcl();
-                        return;
-                    }
-
-                    auto buildIntArray = [](const std::vector<std::pair<int, std::string>> &items) {
-                        std::ostringstream oss;
-                        oss << "{";
-                        for (size_t i = 0; i < items.size(); ++i) {
-                            if (i > 0) {
-                                oss << ",";
-                            }
-                            oss << items[i].first;
+                    "DELETE FROM doc_acl WHERE doc_id = $1::bigint AND permission != 'owner'",
+                    [=](const drogon::orm::Result &) {
+                        if (aclItems.empty()) {
+                            fetchAcl();
+                            return;
                         }
-                        oss << "}";
-                        return oss.str();
-                    };
 
-                    auto buildTextArray = [](const std::vector<std::pair<int, std::string>> &items) {
-                        std::ostringstream oss;
-                        oss << "{";
-                        for (size_t i = 0; i < items.size(); ++i) {
-                            if (i > 0) {
-                                oss << ",";
+                        auto buildIntArray = [](const std::vector<std::pair<int, std::string>> &items) {
+                            std::ostringstream oss;
+                            oss << "{";
+                            for (size_t i = 0; i < items.size(); ++i) {
+                                if (i > 0) {
+                                    oss << ",";
+                                }
+                                oss << items[i].first;
                             }
-                            oss << "\"" << items[i].second << "\"";
-                        }
-                        oss << "}";
-                        return oss.str();
-                    };
+                            oss << "}";
+                            return oss.str();
+                        };
 
-                    std::string userIdArray = buildIntArray(aclItems);
-                    std::string permissionArray = buildTextArray(aclItems);
+                        auto buildTextArray = [](const std::vector<std::pair<int, std::string>> &items) {
+                            std::ostringstream oss;
+                            oss << "{";
+                            for (size_t i = 0; i < items.size(); ++i) {
+                                if (i > 0) {
+                                    oss << ",";
+                                }
+                                oss << "\"" << items[i].second << "\"";
+                            }
+                            oss << "}";
+                            return oss.str();
+                        };
+
+                        std::string userIdArray = buildIntArray(aclItems);
+                        std::string permissionArray = buildTextArray(aclItems);
 
                     db->execSqlAsync(
-                            "INSERT INTO doc_acl (doc_id, user_id, permission) "
-                            "SELECT $1::bigint, unnest($2::bigint[]), unnest($3::varchar[])",
-                            [=](const drogon::orm::Result &) { fetchAcl(); }, errorHandler, docIdStr, userIdArray,
-                            permissionArray);
+                                "INSERT INTO doc_acl (doc_id, user_id, permission) "
+                                "SELECT $1::bigint, unnest($2::bigint[]), unnest($3::varchar[])",
+                                [=](const drogon::orm::Result &) {
+                                    notifyPermissionChanges(*previousAcl);
+                                    fetchAcl();
+                                },
+                                errorHandler, docIdStr, userIdArray, permissionArray);
+                    },
+                    errorHandler, docIdStr);
+        };
+
+        db->execSqlAsync(
+                "SELECT user_id, permission FROM doc_acl WHERE doc_id = $1::bigint AND permission != 'owner'",
+                [=](const drogon::orm::Result &currentAcl) {
+                    for (const auto &row : currentAcl) {
+                        (*previousAclMapPtr)[row["user_id"].as<int>()] = row["permission"].as<std::string>();
+                    }
+                    applyAclChanges(previousAclMapPtr);
                 },
-                errorHandler, docIdStr);
+                [=](const drogon::orm::DrogonDbException &e) { errorHandler(e); }, docIdStr);
     });
 }

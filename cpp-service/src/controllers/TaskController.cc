@@ -2,8 +2,7 @@
 
 #include <drogon/drogon.h>
 
-#include <numeric>
-
+#include "../utils/NotificationUtils.h"
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
 using namespace drogon;
@@ -155,12 +154,23 @@ void TaskController::createTasks(const HttpRequestPtr& req, std::function<void(c
             return;
         }
 
+        auto handleInsertResult = [=](const drogon::orm::Result& r) {
+            if (!r.empty() && !r[0]["assignee_id"].isNull()) {
+                int notifyAssigneeId = r[0]["assignee_id"].as<int>();
+                if (notifyAssigneeId > 0) {
+                    NotificationUtils::createTaskAssignmentNotification(
+                            r[0]["doc_id"].as<int>(), r[0]["id"].as<int>(), notifyAssigneeId);
+                }
+            }
+            buildTaskResponse(r, callbackPtr);
+        };
+
         if (assigneeId > 0 && !dueAt.empty()) {
             db->execSqlAsync(
                     "INSERT INTO task (doc_id, assignee_id, title, due_at, created_by) "
                     "VALUES ($1::integer, $2::integer, $3, $4::timestamptz, $5::integer) "
                     "RETURNING id, doc_id, assignee_id, title, status, due_at, created_by, created_at, updated_at",
-                    [=](const drogon::orm::Result& r) { buildTaskResponse(r, callbackPtr); },
+                    [=](const drogon::orm::Result& r) { handleInsertResult(r); },
                     [=](const drogon::orm::DrogonDbException& e) {
                         ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                  k500InternalServerError);
@@ -171,7 +181,7 @@ void TaskController::createTasks(const HttpRequestPtr& req, std::function<void(c
                     "INSERT INTO task (doc_id, assignee_id, title, created_by) "
                     "VALUES ($1::integer, $2::integer, $3, $4::integer) "
                     "RETURNING id, doc_id, assignee_id, title, status, due_at, created_by, created_at, updated_at",
-                    [=](const drogon::orm::Result& r) { buildTaskResponse(r, callbackPtr); },
+                    [=](const drogon::orm::Result& r) { handleInsertResult(r); },
                     [=](const drogon::orm::DrogonDbException& e) {
                         ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                  k500InternalServerError);
@@ -182,7 +192,7 @@ void TaskController::createTasks(const HttpRequestPtr& req, std::function<void(c
                     "INSERT INTO task (doc_id, title, created_by) "
                     "VALUES ($1::integer, $2, $3::integer) "
                     "RETURNING id, doc_id, assignee_id, title, status, due_at, created_by, created_at, updated_at",
-                    [=](const drogon::orm::Result& r) { buildTaskResponse(r, callbackPtr); },
+                    [=](const drogon::orm::Result& r) { handleInsertResult(r); },
                     [=](const drogon::orm::DrogonDbException& e) {
                         ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                  k500InternalServerError);
@@ -237,11 +247,12 @@ void TaskController::updateTasks(const HttpRequestPtr& req, std::function<void(c
                     return;
                 }
 
-                int assigneeId = r[0]["assignee_id"].isNull() ? -1 : r[0]["assignee_id"].as<int>();
+                int currentAssigneeId = r[0]["assignee_id"].isNull() ? -1 : r[0]["assignee_id"].as<int>();
                 int createdBy = r[0]["created_by"].as<int>();
                 int ownerId = r[0]["owner_id"].as<int>();
+                int docId = r[0]["doc_id"].as<int>();
 
-                if (userId != assigneeId && userId != createdBy && userId != ownerId) {
+                if (userId != currentAssigneeId && userId != createdBy && userId != ownerId) {
                     ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
                     return;
                 }
@@ -270,54 +281,27 @@ void TaskController::updateTasks(const HttpRequestPtr& req, std::function<void(c
                     updateValues.push_back(title);
                 }
 
-                if (json.isMember("assignee_id")) {
-                    int assigneeId = json["assignee_id"].asInt();
-                    updateFields.push_back("assignee_id = $" + std::to_string(updateFields.size() + 1) + "::integer");
-                    updateValues.push_back(std::to_string(assigneeId));
-                }
-
-                if (json.isMember("due_at")) {
-                    std::string dueAt = json["due_at"].asString();
-                    updateFields.push_back("due_at = $" + std::to_string(updateFields.size() + 1) + "::timestamptz");
-                    updateValues.push_back(dueAt);
-                }
-
-                if (updateFields.empty()) {
-                    ResponseUtils::sendError(*callbackPtr, "No fields to update", k400BadRequest);
-                    return;
-                }
-
-                updateFields.push_back("updated_at = NOW()");
-
-                // 6. 执行更新
-                std::string sql =
-                        "UPDATE task SET " +
-                        std::accumulate(updateFields.begin(), updateFields.end(), std::string(),
-                                        [](const std::string& a, const std::string& b) {
-                                            return a.empty() ? b : a + ", " + b;
-                                        }) +
-                        " WHERE id = $" + std::to_string(updateFields.size() + 1) +
-                        "::integer "
-                        "RETURNING id, doc_id, assignee_id, title, status, due_at, created_by, created_at, updated_at";
-
-                std::vector<std::string> params = updateValues;
-                params.push_back(std::to_string(taskId));
-
-                // 注意：这里需要根据参数数量动态构建 execSqlAsync 调用
-                // 简化版本：只支持 status 更新
                 if (json.isMember("status")) {
                     std::string status = json["status"].asString();
                     db->execSqlAsync(
                             "UPDATE task SET status = $1, updated_at = NOW() WHERE id = $2::integer "
                             "RETURNING id, doc_id, assignee_id, title, status, due_at, created_by, created_at, "
                             "updated_at",
-                            [=](const drogon::orm::Result& r) { buildTaskResponse(r, callbackPtr); },
+                            [=](const drogon::orm::Result& r) {
+                                if (!r.empty() && currentAssigneeId > 0) {
+                                    NotificationUtils::createTaskStatusNotification(
+                                            docId, r[0]["id"].as<int>(), currentAssigneeId, status);
+                                }
+                                buildTaskResponse(r, callbackPtr);
+                            },
                             [=](const drogon::orm::DrogonDbException& e) {
                                 ResponseUtils::sendError(*callbackPtr,
                                                          "Database error: " + std::string(e.base().what()),
                                                          k500InternalServerError);
                             },
                             status, std::to_string(taskId));
+                } else {
+                    ResponseUtils::sendError(*callbackPtr, "No supported fields to update", k400BadRequest);
                 }
             },
             [=](const drogon::orm::DrogonDbException& e) {

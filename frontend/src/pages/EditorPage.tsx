@@ -1,13 +1,15 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
-import { Document, DocumentVersion } from '../types';
+import { Document, DocumentVersion, AclEntry, DocumentAcl } from '../types';
 import { DocumentEditor } from '../components/DocumentEditor';
 import { CommentPanel } from '../components/CommentPanel';
 import { TaskPanel } from '../components/TaskPanel';
 import { AclManager } from '../components/AclManager';
 import { ChatPanel } from '../components/chat/ChatPanel';
+
+type SideTabKey = 'info' | 'comments' | 'tasks' | 'acl' | 'chat';
 
 export function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,9 +22,10 @@ export function EditorPage() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'info' | 'comments' | 'tasks' | 'acl' | 'chat'>('info');
+  const [activeTab, setActiveTab] = useState<SideTabKey>('info');
   const [isSaving, setIsSaving] = useState(false);
   const saveRequestRef = useRef<(() => Promise<void>) | null>(null);
+  const [aclEntries, setAclEntries] = useState<AclEntry[]>([]);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState<string | null>(null);
@@ -34,7 +37,45 @@ export function EditorPage() {
     }
     loadDocument(docId);
     loadVersions(docId);
+    setAclEntries([]);
   }, [docId, id, navigate]);
+  const handleAclLoaded = (data: DocumentAcl | null) => {
+    setAclEntries(data?.acl || []);
+  };
+
+  const isOwner = useMemo(() => {
+    if (!document || !user) return false;
+    return document.owner_id === user.id;
+  }, [document, user]);
+
+  const roleStats = useMemo(() => {
+    return aclEntries.reduce(
+      (stats, entry) => {
+        stats.total += 1;
+        stats[entry.permission] = (stats[entry.permission] || 0) + 1;
+        return stats;
+      },
+      { total: 0, owner: 0, editor: 0, viewer: 0 } as Record<'total' | 'owner' | 'editor' | 'viewer', number>
+    );
+  }, [aclEntries]);
+
+  const sortedCollaborators = useMemo(() => {
+    const ownerEntry = aclEntries.find((entry) => entry.permission === 'owner');
+    const others = aclEntries.filter((entry) => entry.permission !== 'owner');
+    return ownerEntry ? [ownerEntry, ...others] : others;
+  }, [aclEntries]);
+
+  const collaboratorBadges = useMemo(() => {
+    const visible = sortedCollaborators.slice(0, 3);
+    const extra = Math.max(sortedCollaborators.length - visible.length, 0);
+    return { visible, extra };
+  }, [sortedCollaborators]);
+
+  const formatCollaboratorName = (entry: AclEntry) => entry.nickname || entry.email || `用户 ${entry.user_id}`;
+  const getCollaboratorInitials = (entry: AclEntry) => {
+    const source = entry.nickname || entry.email || String(entry.user_id);
+    return source?.slice(0, 2).toUpperCase();
+  };
 
   const loadDocument = async (currentId: number) => {
     setIsLoading(true);
@@ -217,8 +258,8 @@ export function EditorPage() {
       {/* 主内容 */}
       <main className="flex-grow bg-gray-50">
         <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-10">
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-6">
-            <section>
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_350px] gap-6 items-start">
+            <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 min-h-[calc(100vh-260px)]">
               <DocumentEditor
                 docId={docId}
                 onSave={() => {
@@ -235,52 +276,26 @@ export function EditorPage() {
             {/* 信息侧栏 */}
             <aside className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               {/* 标签页导航 */}
-              <div className="border-b border-gray-200 grid grid-cols-2 sm:grid-cols-5">
-                <button
-                  onClick={() => setActiveTab('info')}
-                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'info'
+              <div className="border-b border-gray-200 flex flex-wrap">
+                {([
+                  { key: 'info', label: '信息', icon: 'fa fa-info-circle' },
+                  { key: 'comments', label: '评论', icon: 'fa fa-comments' },
+                  { key: 'tasks', label: '任务', icon: 'fa fa-tasks' },
+                  { key: 'acl', label: '权限', icon: 'fa fa-lock' },
+                  { key: 'chat', label: '聊天', icon: 'fa fa-comments-o' },
+                ] as { key: SideTabKey; label: string; icon: string }[]).map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`flex-1 min-w-[140px] text-center px-4 py-3 text-sm font-medium transition-custom ${activeTab === tab.key
                       ? 'text-primary border-b-2 border-primary bg-primary/5'
                       : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                  <i className="fa fa-info-circle mr-2"></i>信息
-                </button>
-                <button
-                  onClick={() => setActiveTab('comments')}
-                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'comments'
-                      ? 'text-primary border-b-2 border-primary bg-primary/5'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                  <i className="fa fa-comments mr-2"></i>评论
-                </button>
-                <button
-                  onClick={() => setActiveTab('tasks')}
-                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'tasks'
-                      ? 'text-primary border-b-2 border-primary bg-primary/5'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                  <i className="fa fa-tasks mr-2"></i>任务
-                </button>
-                <button
-                  onClick={() => setActiveTab('acl')}
-                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'acl'
-                      ? 'text-primary border-b-2 border-primary bg-primary/5'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                  <i className="fa fa-lock mr-2"></i>权限
-                </button>
-                <button
-                  onClick={() => setActiveTab('chat')}
-                  className={`px-4 py-3 text-sm font-medium transition-custom ${activeTab === 'chat'
-                      ? 'text-primary border-b-2 border-primary bg-primary/5'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                  <i className="fa fa-comments-o mr-2"></i>聊天
-                </button>
+                      }`}
+                  >
+                    <i className={`${tab.icon} mr-2`}></i>
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
               {/* 标签页内容 */}
@@ -308,22 +323,51 @@ export function EditorPage() {
                     </div>
 
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-900 mb-3">协作者</h3>
-                      <div className="flex -space-x-2 mb-3">
-                        <div className="h-10 w-10 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold border-2 border-white">
-                          {user?.profile?.nickname?.[0] || '我'}
-                        </div>
-                        <div className="h-10 w-10 rounded-full bg-secondary text-white flex items-center justify-center text-sm font-semibold border-2 border-white">
-                          协
-                        </div>
-                        <div className="h-10 w-10 rounded-full bg-warning text-white flex items-center justify-center text-sm font-semibold border-2 border-white">
-                          作
-                        </div>
-                        <button className="h-10 w-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-lg border-2 border-white hover:bg-gray-200 transition">
-                          +
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-gray-900">协作者</h3>
+                        <button
+                          onClick={() => setActiveTab('acl')}
+                          className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+                        >
+                          <i className="fa fa-lock"></i>
+                          管理权限
                         </button>
                       </div>
-                      <button className="text-sm text-primary hover:text-primary/80">邀请协作者</button>
+                      {aclEntries.length > 0 ? (
+                        <>
+                          <div className="flex -space-x-2 mb-3">
+                            {collaboratorBadges.visible.map((entry) => (
+                              <div
+                                key={`collab-${entry.user_id}-${entry.permission}`}
+                                className="h-10 w-10 rounded-full bg-primary/90 text-white flex items-center justify-center text-xs font-semibold border-2 border-white"
+                                title={`${formatCollaboratorName(entry)}（${entry.permission === 'owner' ? '所有者' : entry.permission === 'editor' ? '编辑者' : '查看者'}）`}
+                              >
+                                {getCollaboratorInitials(entry)}
+                              </div>
+                            ))}
+                            {collaboratorBadges.extra > 0 && (
+                              <div className="h-10 w-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs font-semibold border-2 border-white">
+                                +{collaboratorBadges.extra}
+                              </div>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
+                            <span className="px-2 py-1 rounded-lg bg-gray-100 text-center">
+                              所有者 {roleStats.owner}
+                            </span>
+                            <span className="px-2 py-1 rounded-lg bg-blue-50 text-blue-600 text-center">
+                              编辑者 {roleStats.editor}
+                            </span>
+                            <span className="px-2 py-1 rounded-lg bg-purple-50 text-purple-600 text-center">
+                              查看者 {roleStats.viewer}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-sm text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-3 py-4">
+                          暂无协作者，点击“管理权限”可以邀请团队成员。
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -410,10 +454,12 @@ export function EditorPage() {
                 {activeTab === 'tasks' && <TaskPanel docId={docId} />}
 
                 {activeTab === 'acl' && (
-                  <div className="max-h-[calc(100vh-360px)] overflow-y-auto pr-1 -mr-1">
+                  <div className="max-h-[calc(100vh-360px)] overflow-y-auto pr-1">
                     <AclManager
                       docId={docId}
                       onUpdate={() => loadDocument(docId)}
+                      onLoaded={handleAclLoaded}
+                      isOwner={isOwner}
                     />
                   </div>
                 )}

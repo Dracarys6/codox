@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChatMessage } from '../types';
 
-type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected';
+type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'disabled';
 
 interface UseChatWebSocketOptions {
     roomId?: number | null;
@@ -10,21 +10,34 @@ interface UseChatWebSocketOptions {
     onClose?: () => void;
 }
 
+const CHAT_WS_BASE = (import.meta.env.VITE_CHAT_WS_URL as string | undefined)?.trim();
+
 export function useChatWebSocket({ roomId, onMessage, onJoin, onClose }: UseChatWebSocketOptions) {
     const [status, setStatus] = useState<ConnectionStatus>('idle');
     const socketRef = useRef<WebSocket | null>(null);
 
     useEffect(() => {
         if (!roomId) {
+            setStatus('idle');
+            return;
+        }
+
+        if (!CHAT_WS_BASE) {
+            setStatus('disabled');
+            return;
+        }
+
+        let url: URL;
+        try {
+            url = new URL(CHAT_WS_BASE);
+        } catch (err) {
+            console.error('Invalid VITE_CHAT_WS_URL:', CHAT_WS_BASE, err);
+            setStatus('disabled');
             return;
         }
 
         const token = localStorage.getItem('access_token');
-        const chatBase =
-            import.meta.env.VITE_CHAT_WS_URL ||
-            `${(import.meta.env.VITE_WS_URL || 'ws://localhost:1234').replace(/\/$/, '')}/chat`;
-
-        const url = new URL(chatBase);
+        console.log('前端传递的 Chat Token:', token); // 关键：打印实际传递的 Token
         url.searchParams.set('room_id', String(roomId));
         if (token) {
             url.searchParams.set('token', token);
@@ -46,14 +59,12 @@ export function useChatWebSocket({ roomId, onMessage, onJoin, onClose }: UseChat
 
         socket.onmessage = async (event) => {
             try {
-                // 处理 Blob 或字符串数据
                 let data: string;
                 if (event.data instanceof Blob) {
                     data = await event.data.text();
                 } else if (typeof event.data === 'string') {
                     data = event.data;
                 } else {
-                    // 尝试转换为字符串
                     data = String(event.data);
                 }
 

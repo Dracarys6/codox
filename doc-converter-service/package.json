@@ -1,0 +1,27 @@
+{
+  "name": "doc-converter-service",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "docx": "^9.5.1",
+    "express": "^5.1.0",
+    "fs-extra": "^11.3.2",
+    "mammoth": "^1.11.0",
+    "marked": "^15.0.12",
+    "multer": "^2.0.2",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "^2.2.2",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "nodeman": "^1.1.2"
+  }
+}

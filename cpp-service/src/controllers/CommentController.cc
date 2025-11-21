@@ -2,6 +2,7 @@
 
 #include <json/json.h>
 
+#include "../utils/NotificationUtils.h"
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
 
@@ -165,8 +166,9 @@ void CommentController::createComments(const HttpRequestPtr& req,
                             return;
                         }
 
+                        int commentId = r[0]["id"].as<int>();
                         Json::Value responseJson;
-                        responseJson["id"] = r[0]["id"].as<int>();
+                        responseJson["id"] = commentId;
                         responseJson["doc_id"] = r[0]["doc_id"].as<int>();
                         responseJson["author_id"] = r[0]["author_id"].as<int>();
                         responseJson["content"] = r[0]["content"].as<std::string>();
@@ -178,6 +180,7 @@ void CommentController::createComments(const HttpRequestPtr& req,
                             responseJson["parent_id"] = Json::Value(r[0]["parent_id"].as<int>());
                         }
 
+                        NotificationUtils::createCommentNotification(docId, commentId, userId, 0);
                         ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
                     },
                     [=](const drogon::orm::DrogonDbException& e) {
@@ -197,8 +200,9 @@ void CommentController::createComments(const HttpRequestPtr& req,
                             return;
                         }
 
+                        int commentId = r[0]["id"].as<int>();
                         Json::Value responseJson;
-                        responseJson["id"] = r[0]["id"].as<int>();
+                        responseJson["id"] = commentId;
                         responseJson["doc_id"] = r[0]["doc_id"].as<int>();
                         responseJson["author_id"] = r[0]["author_id"].as<int>();
                         responseJson["content"] = r[0]["content"].as<std::string>();
@@ -210,6 +214,7 @@ void CommentController::createComments(const HttpRequestPtr& req,
                             responseJson["parent_id"] = Json::Value(r[0]["parent_id"].as<int>());
                         }
 
+                        NotificationUtils::createCommentNotification(docId, commentId, userId, 0);
                         ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
                     },
                     [=](const drogon::orm::DrogonDbException& e) {

@@ -9,6 +9,8 @@ export function NotificationBell() {
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [showPanel, setShowPanel] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [latestToast, setLatestToast] = useState<NotificationItem | null>(null);
+    const toastTimerRef = useRef<number | null>(null);
     const panelRef = useRef<HTMLDivElement>(null);
     const [browserPermission, setBrowserPermission] = useState<
         NotificationPermission | 'unsupported'
@@ -160,6 +162,13 @@ export function NotificationBell() {
                 setUnreadCount((count) => count + 1);
                 showBrowserNotification(notification);
             }
+            setLatestToast(notification);
+            if (toastTimerRef.current) {
+                window.clearTimeout(toastTimerRef.current);
+            }
+            toastTimerRef.current = window.setTimeout(() => {
+                setLatestToast(null);
+            }, 5000);
         },
         [showBrowserNotification]
     );
@@ -170,6 +179,14 @@ export function NotificationBell() {
             loadUnreadCount();
         },
     });
+
+    useEffect(() => {
+        return () => {
+            if (toastTimerRef.current) {
+                window.clearTimeout(toastTimerRef.current);
+            }
+        };
+    }, []);
 
     const unreadNotifications = notifications.filter((n) => !n.is_read);
 
@@ -192,13 +209,6 @@ export function NotificationBell() {
                         <div className="flex justify-between items-center">
                             <h3 className="font-semibold text-gray-900">通知</h3>
                             <div className="flex items-center gap-2">
-                                <Link
-                                    to="/notifications/settings"
-                                    className="text-xs text-gray-400 hover:text-primary"
-                                    onClick={() => setShowPanel(false)}
-                                >
-                                    设置
-                                </Link>
                                 {unreadNotifications.length > 0 && (
                                     <button
                                         onClick={() => handleMarkAsRead(unreadNotifications.map((n) => n.id))}
@@ -268,15 +278,52 @@ export function NotificationBell() {
                             >
                                 查看全部通知
                             </Link>
-                            <Link
-                                to="/notifications/settings"
-                                className="text-xs text-gray-500 hover:text-primary transition"
-                                onClick={() => setShowPanel(false)}
-                            >
-                                通知设置
-                            </Link>
                         </div>
                     )}
+                </div>
+            )}
+            {latestToast && (
+                <div className="fixed bottom-6 right-6 w-80 bg-white shadow-2xl rounded-2xl border border-primary/30 z-50 animate-fade-in">
+                    <div className="p-4">
+                        <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                                <i className="fa fa-bell"></i>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-900 truncate">
+                                    {getNotificationText(latestToast)}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    刚刚 · {latestToast.type}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setLatestToast(null)}
+                                className="text-gray-400 hover:text-gray-600"
+                                aria-label="关闭提醒"
+                            >
+                                <i className="fa fa-times"></i>
+                            </button>
+                        </div>
+                        <div className="mt-3 flex justify-end gap-2">
+                            <button
+                                onClick={() => setLatestToast(null)}
+                                className="text-xs text-gray-500 hover:text-gray-700"
+                            >
+                                稍后处理
+                            </button>
+                            <Link
+                                to={getNotificationLink(latestToast)}
+                                className="text-xs px-3 py-1.5 rounded-full bg-primary text-white hover:bg-primary/90"
+                                onClick={() => {
+                                    setShowPanel(false);
+                                    setLatestToast(null);
+                                }}
+                            >
+                                查看详情
+                            </Link>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

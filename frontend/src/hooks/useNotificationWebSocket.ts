@@ -15,48 +15,46 @@ export function useNotificationWebSocket({ onNotification, onError }: UseNotific
 
     const buildWebSocketUrl = useCallback(() => {
         const token = localStorage.getItem('access_token');
-        const configured = import.meta.env.VITE_NOTIFICATION_WS_URL as string | undefined;
-        let base: string;
+        if (!token) {
+            return null;
+        }
 
+        const configured = (import.meta.env.VITE_NOTIFICATION_WS_URL as string | undefined)?.trim();
         if (configured) {
-            base = configured;
+            const target = new URL(configured, window.location.origin);
+            if (!target.searchParams.has('token')) {
+                target.searchParams.set('token', token);
+            }
+            return target.toString();
+        }
+
+        const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+        let origin: string;
+        if (apiBase && /^https?:\/\//i.test(apiBase)) {
+            origin = new URL(apiBase).origin;
+        } else if (import.meta.env.DEV) {
+            origin = 'http://localhost:8080';
         } else {
-            const apiBase = import.meta.env.VITE_API_BASE_URL as string | undefined;
-            let origin: string | undefined;
-
-            if (apiBase && /^https?:/i.test(apiBase.trim())) {
-                try {
-                    origin = new URL(apiBase).origin;
-                } catch {
-                    origin = undefined;
-                }
-            }
-
-            if (!origin) {
-                if (import.meta.env.DEV) {
-                    origin = 'http://localhost:8080';
-                } else {
-                    origin = window.location.origin;
-                }
-            }
-
-            const urlOrigin = new URL(origin);
-            urlOrigin.protocol = urlOrigin.protocol === 'https:' ? 'wss:' : 'ws:';
-            base = `${urlOrigin.origin.replace(/\/$/, '')}/ws/notifications`;
+            origin = window.location.origin;
         }
 
-        let url = new URL(base, window.location.origin);
-        if (token) {
-            url.searchParams.set('token', token);
-        }
-        return url.toString();
+        const baseUrl = new URL('/ws/notifications', origin);
+        baseUrl.searchParams.set('token', token);
+        baseUrl.protocol = baseUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+        return baseUrl.toString();
     }, []);
 
     useEffect(() => {
         const connect = () => {
+            const url = buildWebSocketUrl();
+            if (!url) {
+                setStatus('idle');
+                return;
+            }
+
             try {
                 setStatus('connecting');
-                const socket = new WebSocket(buildWebSocketUrl());
+                const socket = new WebSocket(url);
                 socketRef.current = socket;
 
                 socket.onopen = () => {

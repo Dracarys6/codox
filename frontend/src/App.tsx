@@ -8,7 +8,6 @@ import { EditorPage } from './pages/EditorPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SearchPage } from './pages/SearchPage';
 import { NotificationsPage } from './pages/NotificationsPage';
-import { NotificationSettingsPage } from './pages/NotificationSettingsPage';
 import './index.css';
 
 // 受保护的路由组件
@@ -88,14 +87,6 @@ function App() {
             element={
               <ProtectedRoute>
                 <NotificationsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/notifications/settings"
-            element={
-              <ProtectedRoute>
-                <NotificationSettingsPage />
               </ProtectedRoute>
             }
           />

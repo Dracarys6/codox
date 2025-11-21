@@ -9,6 +9,8 @@
         "jwt_secret": "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789ab+cdefgh=",
         "jwt_access_expires_in": 900,
         "jwt_refresh_expires_in": 2592000,
+        "chat_jwt_secret": "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789ab+cdefgh=",
+        "chat_jwt_expires_in": 900,
         "threads_num": 4,
         "webhook_token": "7f9e2d4c-8b3a-41e0-9c6f-5d873a2b9c1e",
         "meilisearch_url": "http://localhost:7700",

@@ -19,6 +19,8 @@ const FILTER_DEFAULTS = {
     unreadOnly: false,
 };
 
+type FilterState = typeof FILTER_DEFAULTS;
+
 export function NotificationsPage() {
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [page, setPage] = useState(1);
@@ -27,8 +29,18 @@ export function NotificationsPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [selected, setSelected] = useState<Set<number>>(new Set());
-    const [filterForm, setFilterForm] = useState({ ...FILTER_DEFAULTS });
-    const [filters, setFilters] = useState({ ...FILTER_DEFAULTS });
+    const [filterForm, setFilterForm] = useState<FilterState>({ ...FILTER_DEFAULTS });
+    const [filters, setFilters] = useState<FilterState>({ ...FILTER_DEFAULTS });
+
+    const isFilterActive = useMemo(() => {
+        return (
+            filters.type !== FILTER_DEFAULTS.type ||
+            filters.docId.trim() !== FILTER_DEFAULTS.docId ||
+            filters.startDate !== FILTER_DEFAULTS.startDate ||
+            filters.endDate !== FILTER_DEFAULTS.endDate ||
+            filters.unreadOnly !== FILTER_DEFAULTS.unreadOnly
+        );
+    }, [filters]);
 
     const pageCount = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [pageSize, total]);
 
@@ -38,39 +50,45 @@ export function NotificationsPage() {
         }
     }, [page, pageCount]);
 
-    const buildParams = useCallback((): NotificationFilterParams => {
-        const params: NotificationFilterParams = {
-            page,
-            page_size: pageSize,
-            unread_only: filters.unreadOnly || undefined,
-            type: filters.type || undefined,
-            start_date: filters.startDate || undefined,
-            end_date: filters.endDate || undefined,
-        };
-        if (filters.docId.trim()) {
-            const docId = Number(filters.docId);
-            if (!Number.isNaN(docId)) {
-                params.doc_id = docId;
+    const buildParams = useCallback(
+        (inputFilters: FilterState, currentPage: number): NotificationFilterParams => {
+            const params: NotificationFilterParams = {
+                page: currentPage,
+                page_size: pageSize,
+                unread_only: inputFilters.unreadOnly || undefined,
+                type: inputFilters.type || undefined,
+                start_date: inputFilters.startDate || undefined,
+                end_date: inputFilters.endDate || undefined,
+            };
+            if (inputFilters.docId.trim()) {
+                const docId = Number(inputFilters.docId);
+                if (!Number.isNaN(docId)) {
+                    params.doc_id = docId;
+                }
             }
-        }
-        return params;
-    }, [filters, page, pageSize]);
+            return params;
+        },
+        [pageSize]
+    );
 
-    const fetchNotifications = useCallback(async () => {
-        try {
-            setLoading(true);
-            setError(null);
-            const response = await apiClient.getNotifications(buildParams());
-            setNotifications(response.notifications || []);
-            setTotal(response.total || 0);
-            setSelected(new Set());
-        } catch (err: any) {
-            console.error('Failed to load notifications:', err);
-            setError(err.response?.data?.error || '加载通知失败');
-        } finally {
-            setLoading(false);
-        }
-    }, [buildParams]);
+    const fetchNotifications = useCallback(
+        async (inputFilters: FilterState = filters, inputPage = page) => {
+            try {
+                setLoading(true);
+                setError(null);
+                const response = await apiClient.getNotifications(buildParams(inputFilters, inputPage));
+                setNotifications(response.notifications || []);
+                setTotal(response.total || 0);
+                setSelected(new Set());
+            } catch (err: any) {
+                console.error('Failed to load notifications:', err);
+                setError(err.response?.data?.error || '加载通知失败');
+            } finally {
+                setLoading(false);
+            }
+        },
+        [buildParams, filters, page]
+    );
 
     useEffect(() => {
         fetchNotifications();
@@ -78,7 +96,8 @@ export function NotificationsPage() {
 
     const handleFilterSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        setFilters({ ...filterForm });
+        const nextFilters: FilterState = { ...filterForm };
+        setFilters(nextFilters);
         setPage(1);
     };
 
@@ -197,12 +216,6 @@ export function NotificationsPage() {
                         <p className="text-sm text-gray-500 mt-1">筛选、查看并管理系统通知</p>
                     </div>
                     <div className="flex gap-3">
-                        <Link
-                            to="/notifications/settings"
-                            className="px-4 py-2 text-sm font-medium border border-gray-200 rounded-lg hover:bg-white transition"
-                        >
-                            通知设置
-                        </Link>
                         <button
                             type="button"
                             onClick={markAllAsRead}
@@ -341,7 +354,20 @@ export function NotificationsPage() {
                                 ) : notifications.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
-                                            暂无通知
+                                            {isFilterActive ? (
+                                                <div className="space-y-3">
+                                                    <p>没有符合当前筛选条件的通知</p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={resetFilters}
+                                                        className="text-sm px-4 py-2 border border-primary text-primary rounded-lg hover:bg-primary/5 transition"
+                                                    >
+                                                        清除筛选条件
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                '暂无通知'
+                                            )}
                                         </td>
                                     </tr>
                                 ) : (
