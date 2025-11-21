@@ -10,7 +10,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../repositories/VersionRepository.h"
+#include "../services/SearchService.h"
 #include "../utils/DbUtils.h"
+#include "../utils/DiffUtils.h"
+#include "../utils/MinIOClient.h"
 #include "../utils/NotificationUtils.h"
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
@@ -308,9 +312,13 @@ void DocumentController::create(const HttpRequestPtr &req, std::function<void(co
                         "INSERT INTO doc_acl (doc_id, user_id, permission) "
                         "VALUES($1::integer, $2::integer, 'owner') ON CONFLICT DO NOTHING",
                         [=](const drogon::orm::Result &) mutable {
+                            // 7.索引文档到Meilisearch
+                            std::string docTitle = r[0]["title"].as<std::string>();
+                            SearchService::indexDocument(docId, docTitle, docTitle);  // 新文档先用title作为content
+
                             Json::Value responseJson;
                             responseJson["id"] = docId;
-                            responseJson["title"] = r[0]["title"].as<std::string>();
+                            responseJson["title"] = docTitle;
                             responseJson["owner_id"] = r[0]["owner_id"].as<int>();
                             responseJson["is_locked"] = r[0]["is_locked"].as<bool>();
                             responseJson["tags"] = Json::Value(Json::arrayValue);
@@ -346,7 +354,7 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
         try {
             int parsed = std::stoi(value);
             return std::max(minValue, std::min(maxValue, parsed));
-    } catch (...) {
+        } catch (...) {
             return defaultValue;
         }
     };
@@ -615,6 +623,11 @@ void DocumentController::update(const drogon::HttpRequestPtr &req,
                 ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
                 return;
             }
+            // 如果更新了title，更新搜索索引
+            if (hasTitle) {
+                std::string updatedTitle = r[0]["title"].as<std::string>();
+                SearchService::indexDocument(docId, updatedTitle, updatedTitle);  // 暂时用title作为content
+            }
             handleUpdateTags(db, docId, json, r, callbackPtr);
         };
 
@@ -698,6 +711,8 @@ void DocumentController::deleteDoc(const HttpRequestPtr &req, std::function<void
                                                  k404NotFound);
                         return;
                     }
+                    // 从搜索索引中删除文档
+                    SearchService::deleteDocument(docId);
                     // 返回成功删除的响应
                     Json::Value responseJson;
                     responseJson["message"] = "Document deleted successfully";
@@ -867,7 +882,7 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
         };
 
         auto applyAclChanges = [=](const std::shared_ptr<std::unordered_map<int, std::string>> &previousAcl) {
-        db->execSqlAsync(
+            db->execSqlAsync(
                     "DELETE FROM doc_acl WHERE doc_id = $1::bigint AND permission != 'owner'",
                     [=](const drogon::orm::Result &) {
                         if (aclItems.empty()) {
@@ -904,7 +919,7 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
                         std::string userIdArray = buildIntArray(aclItems);
                         std::string permissionArray = buildTextArray(aclItems);
 
-                    db->execSqlAsync(
+                        db->execSqlAsync(
                                 "INSERT INTO doc_acl (doc_id, user_id, permission) "
                                 "SELECT $1::bigint, unnest($2::bigint[]), unnest($3::varchar[])",
                                 [=](const drogon::orm::Result &) {
@@ -925,5 +940,790 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
                     applyAclChanges(previousAclMapPtr);
                 },
                 [=](const drogon::orm::DrogonDbException &e) { errorHandler(e); }, docIdStr);
+    });
+}
+
+// 获取文档版本列表
+void DocumentController::getVersions(const HttpRequestPtr &req,
+                                     std::function<void(const HttpResponsePtr &)> &&callback) {
+    // 1. 获取路径参数 doc_id
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    int docId;
+    try {
+        docId = std::stoi(routingParams[0]);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID", k400BadRequest);
+        return;
+    }
+
+    // 2. 获取 user_id
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 3. 检查权限（至少需要 viewer 权限）
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
+            return;
+        }
+
+        // 4. 解析查询参数
+        std::string startDate = req->getParameter("start_date");
+        std::string endDate = req->getParameter("end_date");
+        std::string createdByStr = req->getParameter("created_by");
+        int createdBy = 0;
+        if (!createdByStr.empty()) {
+            try {
+                createdBy = std::stoi(createdByStr);
+            } catch (...) {
+            }
+        }
+
+        // 5. 构建查询
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        // 构建 SQL 和参数
+        std::string sql =
+                "SELECT dv.id, dv.doc_id, dv.version_number, dv.snapshot_url, dv.snapshot_sha256, "
+                "dv.size_bytes, dv.created_by, dv.change_summary, dv.source, dv.content_text, "
+                "dv.content_html, dv.created_at, "
+                "u.email, up.nickname "
+                "FROM document_version dv "
+                "INNER JOIN \"user\" u ON dv.created_by = u.id "
+                "LEFT JOIN user_profile up ON u.id = up.user_id "
+                "WHERE dv.doc_id = $1::bigint";
+
+        std::string docIdStr = std::to_string(docId);
+
+        // 提取公共的响应处理逻辑
+        auto buildVersionResponse = [=](const drogon::orm::Result &r) {
+            Json::Value responseJson;
+            Json::Value versionsArray(Json::arrayValue);
+
+            for (const auto &row : r) {
+                Json::Value versionJson;
+                versionJson["id"] = row["id"].as<int>();
+                versionJson["doc_id"] = row["doc_id"].as<int>();
+                versionJson["version_number"] = row["version_number"].as<int>();
+                versionJson["snapshot_url"] = row["snapshot_url"].as<std::string>();
+                versionJson["snapshot_sha256"] = row["snapshot_sha256"].as<std::string>();
+                versionJson["size_bytes"] = Json::Int64(row["size_bytes"].as<int64_t>());
+                versionJson["created_by"] = row["created_by"].as<int>();
+                if (!row["change_summary"].isNull()) {
+                    versionJson["change_summary"] = row["change_summary"].as<std::string>();
+                }
+                versionJson["source"] = row["source"].as<std::string>();
+                if (!row["content_text"].isNull()) {
+                    versionJson["content_text"] = row["content_text"].as<std::string>();
+                }
+                if (!row["content_html"].isNull()) {
+                    versionJson["content_html"] = row["content_html"].as<std::string>();
+                }
+                versionJson["created_at"] = row["created_at"].as<std::string>();
+                versionJson["creator_email"] = row["email"].as<std::string>();
+                if (!row["nickname"].isNull()) {
+                    versionJson["creator_nickname"] = row["nickname"].as<std::string>();
+                }
+                versionsArray.append(versionJson);
+            }
+
+            responseJson["versions"] = versionsArray;
+            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+        };
+
+        auto handleError = [=](const drogon::orm::DrogonDbException &e) {
+            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                     k500InternalServerError);
+        };
+
+        // 根据过滤条件动态构建 SQL 和参数
+        if (!startDate.empty() && !endDate.empty()) {
+            sql += " AND dv.created_at BETWEEN $2::timestamp AND $3::timestamp";
+            if (createdBy > 0) {
+                sql += " AND dv.created_by = $4::bigint";
+            }
+            sql += " ORDER BY dv.version_number DESC";
+            if (createdBy > 0) {
+                db->execSqlAsync(sql, buildVersionResponse, handleError, docIdStr, startDate, endDate,
+                                 std::to_string(createdBy));
+            } else {
+                db->execSqlAsync(sql, buildVersionResponse, handleError, docIdStr, startDate, endDate);
+            }
+        } else if (!startDate.empty()) {
+            sql += " AND dv.created_at >= $2::timestamp";
+            if (createdBy > 0) {
+                sql += " AND dv.created_by = $3::bigint";
+                sql += " ORDER BY dv.version_number DESC";
+                db->execSqlAsync(
+                        sql,
+                        [=](const drogon::orm::Result &r) {
+                            Json::Value responseJson;
+                            Json::Value versionsArray(Json::arrayValue);
+
+                            for (const auto &row : r) {
+                                Json::Value versionJson;
+                                versionJson["id"] = row["id"].as<int>();
+                                versionJson["doc_id"] = row["doc_id"].as<int>();
+                                versionJson["version_number"] = row["version_number"].as<int>();
+                                versionJson["snapshot_url"] = row["snapshot_url"].as<std::string>();
+                                versionJson["snapshot_sha256"] = row["snapshot_sha256"].as<std::string>();
+                                versionJson["size_bytes"] = Json::Int64(row["size_bytes"].as<int64_t>());
+                                versionJson["created_by"] = row["created_by"].as<int>();
+                                if (!row["change_summary"].isNull()) {
+                                    versionJson["change_summary"] = row["change_summary"].as<std::string>();
+                                }
+                                versionJson["source"] = row["source"].as<std::string>();
+                                if (!row["content_text"].isNull()) {
+                                    versionJson["content_text"] = row["content_text"].as<std::string>();
+                                }
+                                if (!row["content_html"].isNull()) {
+                                    versionJson["content_html"] = row["content_html"].as<std::string>();
+                                }
+                                versionJson["created_at"] = row["created_at"].as<std::string>();
+                                versionJson["creator_email"] = row["email"].as<std::string>();
+                                if (!row["nickname"].isNull()) {
+                                    versionJson["creator_nickname"] = row["nickname"].as<std::string>();
+                                }
+                                versionsArray.append(versionJson);
+                            }
+
+                            responseJson["versions"] = versionsArray;
+                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                        },
+                        [=](const drogon::orm::DrogonDbException &e) {
+                            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                                     k500InternalServerError);
+                        },
+                        docIdStr, startDate, std::to_string(createdBy));
+            } else {
+                sql += " ORDER BY dv.version_number DESC";
+                db->execSqlAsync(
+                        sql,
+                        [=](const drogon::orm::Result &r) {
+                            Json::Value responseJson;
+                            Json::Value versionsArray(Json::arrayValue);
+
+                            for (const auto &row : r) {
+                                Json::Value versionJson;
+                                versionJson["id"] = row["id"].as<int>();
+                                versionJson["doc_id"] = row["doc_id"].as<int>();
+                                versionJson["version_number"] = row["version_number"].as<int>();
+                                versionJson["snapshot_url"] = row["snapshot_url"].as<std::string>();
+                                versionJson["snapshot_sha256"] = row["snapshot_sha256"].as<std::string>();
+                                versionJson["size_bytes"] = Json::Int64(row["size_bytes"].as<int64_t>());
+                                versionJson["created_by"] = row["created_by"].as<int>();
+                                if (!row["change_summary"].isNull()) {
+                                    versionJson["change_summary"] = row["change_summary"].as<std::string>();
+                                }
+                                versionJson["source"] = row["source"].as<std::string>();
+                                if (!row["content_text"].isNull()) {
+                                    versionJson["content_text"] = row["content_text"].as<std::string>();
+                                }
+                                if (!row["content_html"].isNull()) {
+                                    versionJson["content_html"] = row["content_html"].as<std::string>();
+                                }
+                                versionJson["created_at"] = row["created_at"].as<std::string>();
+                                versionJson["creator_email"] = row["email"].as<std::string>();
+                                if (!row["nickname"].isNull()) {
+                                    versionJson["creator_nickname"] = row["nickname"].as<std::string>();
+                                }
+                                versionsArray.append(versionJson);
+                            }
+
+                            responseJson["versions"] = versionsArray;
+                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                        },
+                        [=](const drogon::orm::DrogonDbException &e) {
+                            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                                     k500InternalServerError);
+                        },
+                        docIdStr, startDate);
+            }
+        } else if (!endDate.empty()) {
+            sql += " AND dv.created_at <= $2::timestamp";
+            if (createdBy > 0) {
+                sql += " AND dv.created_by = $3::bigint";
+                sql += " ORDER BY dv.version_number DESC";
+                db->execSqlAsync(
+                        sql,
+                        [=](const drogon::orm::Result &r) {
+                            Json::Value responseJson;
+                            Json::Value versionsArray(Json::arrayValue);
+
+                            for (const auto &row : r) {
+                                Json::Value versionJson;
+                                versionJson["id"] = row["id"].as<int>();
+                                versionJson["doc_id"] = row["doc_id"].as<int>();
+                                versionJson["version_number"] = row["version_number"].as<int>();
+                                versionJson["snapshot_url"] = row["snapshot_url"].as<std::string>();
+                                versionJson["snapshot_sha256"] = row["snapshot_sha256"].as<std::string>();
+                                versionJson["size_bytes"] = Json::Int64(row["size_bytes"].as<int64_t>());
+                                versionJson["created_by"] = row["created_by"].as<int>();
+                                if (!row["change_summary"].isNull()) {
+                                    versionJson["change_summary"] = row["change_summary"].as<std::string>();
+                                }
+                                versionJson["source"] = row["source"].as<std::string>();
+                                if (!row["content_text"].isNull()) {
+                                    versionJson["content_text"] = row["content_text"].as<std::string>();
+                                }
+                                if (!row["content_html"].isNull()) {
+                                    versionJson["content_html"] = row["content_html"].as<std::string>();
+                                }
+                                versionJson["created_at"] = row["created_at"].as<std::string>();
+                                versionJson["creator_email"] = row["email"].as<std::string>();
+                                if (!row["nickname"].isNull()) {
+                                    versionJson["creator_nickname"] = row["nickname"].as<std::string>();
+                                }
+                                versionsArray.append(versionJson);
+                            }
+
+                            responseJson["versions"] = versionsArray;
+                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                        },
+                        [=](const drogon::orm::DrogonDbException &e) {
+                            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                                     k500InternalServerError);
+                        },
+                        docIdStr, endDate, std::to_string(createdBy));
+            } else {
+                sql += " ORDER BY dv.version_number DESC";
+                db->execSqlAsync(
+                        sql,
+                        [=](const drogon::orm::Result &r) {
+                            Json::Value responseJson;
+                            Json::Value versionsArray(Json::arrayValue);
+
+                            for (const auto &row : r) {
+                                Json::Value versionJson;
+                                versionJson["id"] = row["id"].as<int>();
+                                versionJson["doc_id"] = row["doc_id"].as<int>();
+                                versionJson["version_number"] = row["version_number"].as<int>();
+                                versionJson["snapshot_url"] = row["snapshot_url"].as<std::string>();
+                                versionJson["snapshot_sha256"] = row["snapshot_sha256"].as<std::string>();
+                                versionJson["size_bytes"] = Json::Int64(row["size_bytes"].as<int64_t>());
+                                versionJson["created_by"] = row["created_by"].as<int>();
+                                if (!row["change_summary"].isNull()) {
+                                    versionJson["change_summary"] = row["change_summary"].as<std::string>();
+                                }
+                                versionJson["source"] = row["source"].as<std::string>();
+                                if (!row["content_text"].isNull()) {
+                                    versionJson["content_text"] = row["content_text"].as<std::string>();
+                                }
+                                if (!row["content_html"].isNull()) {
+                                    versionJson["content_html"] = row["content_html"].as<std::string>();
+                                }
+                                versionJson["created_at"] = row["created_at"].as<std::string>();
+                                versionJson["creator_email"] = row["email"].as<std::string>();
+                                if (!row["nickname"].isNull()) {
+                                    versionJson["creator_nickname"] = row["nickname"].as<std::string>();
+                                }
+                                versionsArray.append(versionJson);
+                            }
+
+                            responseJson["versions"] = versionsArray;
+                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                        },
+                        [=](const drogon::orm::DrogonDbException &e) {
+                            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                                     k500InternalServerError);
+                        },
+                        docIdStr, endDate);
+            }
+        } else {
+            if (createdBy > 0) {
+                sql += " AND dv.created_by = $2::bigint";
+            }
+            sql += " ORDER BY dv.version_number DESC";
+
+            // 提取公共的响应处理逻辑
+            auto handleResult = [=](const drogon::orm::Result &r) {
+                Json::Value responseJson;
+                Json::Value versionsArray(Json::arrayValue);
+
+                for (const auto &row : r) {
+                    Json::Value versionJson;
+                    versionJson["id"] = row["id"].as<int>();
+                    versionJson["doc_id"] = row["doc_id"].as<int>();
+                    versionJson["version_number"] = row["version_number"].as<int>();
+                    versionJson["snapshot_url"] = row["snapshot_url"].as<std::string>();
+                    versionJson["snapshot_sha256"] = row["snapshot_sha256"].as<std::string>();
+                    versionJson["size_bytes"] = Json::Int64(row["size_bytes"].as<int64_t>());
+                    versionJson["created_by"] = row["created_by"].as<int>();
+                    if (!row["change_summary"].isNull()) {
+                        versionJson["change_summary"] = row["change_summary"].as<std::string>();
+                    }
+                    versionJson["source"] = row["source"].as<std::string>();
+                    if (!row["content_text"].isNull()) {
+                        versionJson["content_text"] = row["content_text"].as<std::string>();
+                    }
+                    if (!row["content_html"].isNull()) {
+                        versionJson["content_html"] = row["content_html"].as<std::string>();
+                    }
+                    versionJson["created_at"] = row["created_at"].as<std::string>();
+                    versionJson["creator_email"] = row["email"].as<std::string>();
+                    if (!row["nickname"].isNull()) {
+                        versionJson["creator_nickname"] = row["nickname"].as<std::string>();
+                    }
+                    versionsArray.append(versionJson);
+                }
+
+                responseJson["versions"] = versionsArray;
+                ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+            };
+
+            auto handleError = [=](const drogon::orm::DrogonDbException &e) {
+                ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                         k500InternalServerError);
+            };
+
+            if (createdBy > 0) {
+                db->execSqlAsync(sql, handleResult, handleError, docIdStr, std::to_string(createdBy));
+            } else {
+                db->execSqlAsync(sql, handleResult, handleError, docIdStr);
+            }
+        }
+    });
+}
+
+// 获取单个版本详情
+void DocumentController::getVersion(const HttpRequestPtr &req,
+                                    std::function<void(const HttpResponsePtr &)> &&callback) {
+    // 1. 获取路径参数
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.size() < 2) {
+        ResponseUtils::sendError(callback, "Document ID and Version ID are required", k400BadRequest);
+        return;
+    }
+    int docId, versionId;
+    try {
+        docId = std::stoi(routingParams[0]);
+        versionId = std::stoi(routingParams[1]);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID or version ID", k400BadRequest);
+        return;
+    }
+
+    // 2. 获取 user_id
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 3. 检查权限
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
+            return;
+        }
+
+        // 4. 查询版本详情
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "SELECT dv.id, dv.doc_id, dv.version_number, dv.snapshot_url, dv.snapshot_sha256, "
+                "dv.size_bytes, dv.created_by, dv.change_summary, dv.source, dv.content_text, "
+                "dv.content_html, dv.created_at, "
+                "u.email, up.nickname "
+                "FROM document_version dv "
+                "INNER JOIN \"user\" u ON dv.created_by = u.id "
+                "LEFT JOIN user_profile up ON u.id = up.user_id "
+                "WHERE dv.id = $1::bigint AND dv.doc_id = $2::bigint",
+                [=](const drogon::orm::Result &r) {
+                    if (r.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Version not found", k404NotFound);
+                        return;
+                    }
+
+                    const auto &row = r[0];
+                    Json::Value versionJson;
+                    versionJson["id"] = row["id"].as<int>();
+                    versionJson["doc_id"] = row["doc_id"].as<int>();
+                    versionJson["version_number"] = row["version_number"].as<int>();
+                    versionJson["snapshot_url"] = row["snapshot_url"].as<std::string>();
+                    versionJson["snapshot_sha256"] = row["snapshot_sha256"].as<std::string>();
+                    versionJson["size_bytes"] = Json::Int64(row["size_bytes"].as<int64_t>());
+                    versionJson["created_by"] = row["created_by"].as<int>();
+                    if (!row["change_summary"].isNull()) {
+                        versionJson["change_summary"] = row["change_summary"].as<std::string>();
+                    }
+                    versionJson["source"] = row["source"].as<std::string>();
+                    if (!row["content_text"].isNull()) {
+                        versionJson["content_text"] = row["content_text"].as<std::string>();
+                    }
+                    if (!row["content_html"].isNull()) {
+                        versionJson["content_html"] = row["content_html"].as<std::string>();
+                    }
+                    versionJson["created_at"] = row["created_at"].as<std::string>();
+                    versionJson["creator_email"] = row["email"].as<std::string>();
+                    if (!row["nickname"].isNull()) {
+                        versionJson["creator_nickname"] = row["nickname"].as<std::string>();
+                    }
+
+                    ResponseUtils::sendSuccess(*callbackPtr, versionJson, k200OK);
+                },
+                [=](const drogon::orm::DrogonDbException &e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                std::to_string(versionId), std::to_string(docId));
+    });
+}
+
+// 手动创建版本
+void DocumentController::createVersion(const HttpRequestPtr &req,
+                                       std::function<void(const HttpResponsePtr &)> &&callback) {
+    // 1. 获取路径参数 doc_id
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    int docId;
+    try {
+        docId = std::stoi(routingParams[0]);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID", k400BadRequest);
+        return;
+    }
+
+    // 2. 获取 user_id
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 3. 检查权限（需要 editor 权限）
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "editor", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden: Only editor or owner can create versions",
+                                     k403Forbidden);
+            return;
+        }
+
+        // 4. 解析请求体
+        auto jsonPtr = req->jsonObject();
+        if (!jsonPtr) {
+            ResponseUtils::sendError(*callbackPtr, "Invalid JSON", k400BadRequest);
+            return;
+        }
+        Json::Value json = *jsonPtr;
+
+        if (!json.isMember("snapshot_url") || !json.isMember("sha256") || !json.isMember("size_bytes")) {
+            ResponseUtils::sendError(*callbackPtr, "Missing required fields: snapshot_url, sha256, size_bytes",
+                                     k400BadRequest);
+            return;
+        }
+
+        std::string snapshotUrl = json["snapshot_url"].asString();
+        std::string sha256 = json["sha256"].asString();
+        int64_t sizeBytes = json["size_bytes"].asInt64();
+        std::string changeSummary = json.get("change_summary", "").asString();
+        std::string contentText = json.get("content_text", "").asString();
+        std::string contentHtml = json.get("content_html", "").asString();
+
+        // 5. 使用 VersionRepository 创建版本
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        VersionInsertParams params;
+        params.docId = docId;
+        params.creatorId = userId;
+        params.snapshotUrl = snapshotUrl;
+        params.snapshotSha256 = sha256;
+        params.sizeBytes = sizeBytes;
+        params.changeSummary = changeSummary;
+        params.source = "manual";
+        params.contentText = contentText;
+        params.contentHtml = contentHtml;
+
+        VersionRepository::insertVersion(
+                db, params,
+                [=](int versionId, int versionNumber) {
+                    Json::Value responseJson;
+                    responseJson["version_id"] = versionId;
+                    responseJson["version_number"] = versionNumber;
+                    responseJson["doc_id"] = docId;
+                    responseJson["message"] = "Version created successfully";
+                    ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                },
+                [=](const std::string &message, drogon::HttpStatusCode code) {
+                    ResponseUtils::sendError(*callbackPtr, message, code);
+                });
+    });
+}
+
+// 恢复版本
+void DocumentController::restoreVersion(const HttpRequestPtr &req,
+                                        std::function<void(const HttpResponsePtr &)> &&callback) {
+    // 1. 获取路径参数
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.size() < 2) {
+        ResponseUtils::sendError(callback, "Document ID and Version ID are required", k400BadRequest);
+        return;
+    }
+    int docId, versionId;
+    try {
+        docId = std::stoi(routingParams[0]);
+        versionId = std::stoi(routingParams[1]);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID or version ID", k400BadRequest);
+        return;
+    }
+
+    // 2. 获取 user_id
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 3. 检查权限（需要 owner 权限）
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "owner", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden: Only owner can restore versions", k403Forbidden);
+            return;
+        }
+
+        // 4. 验证版本存在且属于该文档
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "SELECT snapshot_url, snapshot_sha256, size_bytes, content_text, content_html "
+                "FROM document_version "
+                "WHERE id = $1::bigint AND doc_id = $2::bigint",
+                [=](const drogon::orm::Result &r) {
+                    if (r.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Version not found", k404NotFound);
+                        return;
+                    }
+
+                    const auto &row = r[0];
+                    std::string snapshotUrl = row["snapshot_url"].as<std::string>();
+                    std::string sha256 = row["snapshot_sha256"].as<std::string>();
+                    int64_t sizeBytes = row["size_bytes"].as<int64_t>();
+                    std::string contentText = row["content_text"].isNull() ? "" : row["content_text"].as<std::string>();
+                    std::string contentHtml = row["content_html"].isNull() ? "" : row["content_html"].as<std::string>();
+
+                    // 5. 创建新版本记录（标记为 restore 来源）
+                    VersionInsertParams params;
+                    params.docId = docId;
+                    params.creatorId = userId;
+                    params.snapshotUrl = snapshotUrl;
+                    params.snapshotSha256 = sha256;
+                    params.sizeBytes = sizeBytes;
+                    params.changeSummary = "Restored from version " + std::to_string(versionId);
+                    params.source = "restore";
+                    params.contentText = contentText;
+                    params.contentHtml = contentHtml;
+
+                    VersionRepository::insertVersion(
+                            db, params,
+                            [=](int newVersionId, int newVersionNumber) {
+                                Json::Value responseJson;
+                                responseJson["version_id"] = newVersionId;
+                                responseJson["version_number"] = newVersionNumber;
+                                responseJson["doc_id"] = docId;
+                                responseJson["restored_from_version_id"] = versionId;
+                                responseJson["message"] = "Version restored successfully";
+                                ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                            },
+                            [=](const std::string &message, drogon::HttpStatusCode code) {
+                                ResponseUtils::sendError(*callbackPtr, message, code);
+                            });
+                },
+                [=](const drogon::orm::DrogonDbException &e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                std::to_string(versionId), std::to_string(docId));
+    });
+}
+
+// 获取版本差异
+void DocumentController::getVersionDiff(const HttpRequestPtr &req,
+                                        std::function<void(const HttpResponsePtr &)> &&callback) {
+    // 1. 获取路径参数
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.size() < 2) {
+        ResponseUtils::sendError(callback, "Document ID and Version ID are required", k400BadRequest);
+        return;
+    }
+    int docId, versionId;
+    try {
+        docId = std::stoi(routingParams[0]);
+        versionId = std::stoi(routingParams[1]);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID or version ID", k400BadRequest);
+        return;
+    }
+
+    // 2. 获取查询参数（可选：base_version_id，如果不提供则与当前版本比较）
+    std::string baseVersionIdStr = req->getParameter("base_version_id");
+    int baseVersionId = 0;
+    if (!baseVersionIdStr.empty()) {
+        try {
+            baseVersionId = std::stoi(baseVersionIdStr);
+        } catch (...) {
+        }
+    }
+
+    // 3. 获取 user_id
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 4. 检查权限
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
+            return;
+        }
+
+        // 5. 获取目标版本内容
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "SELECT content_text FROM document_version WHERE id = $1::bigint AND doc_id = $2::bigint",
+                [=](const drogon::orm::Result &targetResult) {
+                    if (targetResult.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Version not found", k404NotFound);
+                        return;
+                    }
+
+                    std::string targetText = targetResult[0]["content_text"].isNull()
+                                                     ? ""
+                                                     : targetResult[0]["content_text"].as<std::string>();
+
+                    // 6. 获取基础版本内容
+                    if (baseVersionId > 0) {
+                        db->execSqlAsync(
+                                "SELECT content_text FROM document_version WHERE id = $1::bigint AND doc_id = "
+                                "$2::bigint",
+                                [=](const drogon::orm::Result &baseResult) {
+                                    if (baseResult.empty()) {
+                                        ResponseUtils::sendError(*callbackPtr, "Base version not found", k404NotFound);
+                                        return;
+                                    }
+
+                                    std::string baseText = baseResult[0]["content_text"].isNull()
+                                                                   ? ""
+                                                                   : baseResult[0]["content_text"].as<std::string>();
+
+                                    // 7. 计算差异
+                                    auto segments = DiffUtils::computeLineDiff(baseText, targetText);
+                                    Json::Value responseJson;
+                                    responseJson["base_version_id"] = baseVersionId;
+                                    responseJson["target_version_id"] = versionId;
+                                    responseJson["diff"] = DiffUtils::segmentsToJson(segments);
+                                    ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                                },
+                                [=](const drogon::orm::DrogonDbException &e) {
+                                    ResponseUtils::sendError(*callbackPtr,
+                                                             "Database error: " + std::string(e.base().what()),
+                                                             k500InternalServerError);
+                                },
+                                std::to_string(baseVersionId), std::to_string(docId));
+                    } else {
+                        // 与当前版本比较（获取最新的版本）
+                        db->execSqlAsync(
+                                "SELECT content_text FROM document_version WHERE doc_id = $1::bigint ORDER BY "
+                                "version_number DESC LIMIT 1",
+                                [=](const drogon::orm::Result &currentResult) {
+                                    std::string baseText =
+                                            currentResult.empty() || currentResult[0]["content_text"].isNull()
+                                                    ? ""
+                                                    : currentResult[0]["content_text"].as<std::string>();
+
+                                    // 计算差异
+                                    auto segments = DiffUtils::computeLineDiff(baseText, targetText);
+                                    Json::Value responseJson;
+                                    responseJson["base_version_id"] = Json::Value::null;
+                                    responseJson["target_version_id"] = versionId;
+                                    responseJson["diff"] = DiffUtils::segmentsToJson(segments);
+                                    ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                                },
+                                [=](const drogon::orm::DrogonDbException &e) {
+                                    ResponseUtils::sendError(*callbackPtr,
+                                                             "Database error: " + std::string(e.base().what()),
+                                                             k500InternalServerError);
+                                },
+                                std::to_string(docId));
+                    }
+                },
+                [=](const drogon::orm::DrogonDbException &e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                std::to_string(versionId), std::to_string(docId));
     });
 }

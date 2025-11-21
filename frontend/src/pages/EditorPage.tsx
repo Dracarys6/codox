@@ -373,23 +373,32 @@ export function EditorPage() {
                     <div>
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-sm font-semibold text-gray-900">版本历史</h3>
-                        <button
-                          onClick={() => loadVersions(docId)}
-                          className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
-                          disabled={versionsLoading}
-                        >
-                          {versionsLoading ? (
-                            <>
-                              <i className="fa fa-spinner fa-spin"></i>
-                              刷新中
-                            </>
-                          ) : (
-                            <>
-                              <i className="fa fa-refresh"></i>
-                              刷新
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => loadVersions(docId)}
+                            className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+                            disabled={versionsLoading}
+                          >
+                            {versionsLoading ? (
+                              <>
+                                <i className="fa fa-spinner fa-spin"></i>
+                                刷新中
+                              </>
+                            ) : (
+                              <>
+                                <i className="fa fa-refresh"></i>
+                                刷新
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => navigate(`/documents/${docId}/versions`)}
+                            className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+                          >
+                            <i className="fa fa-history"></i>
+                            管理版本
+                          </button>
+                        </div>
                       </div>
 
                       {versionsError && (

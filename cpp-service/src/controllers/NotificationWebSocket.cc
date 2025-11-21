@@ -35,7 +35,7 @@ void NotificationWebSocket::handleNewConnection(const drogon::HttpRequestPtr& re
             if (config.isMember("app") && config["app"].isMember("jwt_secret")) {
                 secret = config["app"]["jwt_secret"].asString();
             } else if (config.isMember("jwt_secret")) {
-                secret = config["jwt_secret"].asString();
+            secret = config["jwt_secret"].asString();
             }
         }
 

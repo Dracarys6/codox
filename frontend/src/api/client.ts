@@ -16,8 +16,14 @@ import {
     DocumentAcl,
     UpdateAclRequest,
     VersionListResponse,
+    VersionListParams,
+    DocumentVersion,
     PublishVersionRequest,
     PublishVersionResponse,
+    CreateVersionRequest,
+    CreateVersionResponse,
+    RestoreVersionResponse,
+    VersionDiffResponse,
     ChatRoom,
     ChatRoomListParams,
     ChatRoomListResponse,
@@ -183,6 +189,16 @@ class ApiClient {
         return response.data;
     }
 
+    /**
+     * 搜索用户
+     */
+    async searchUsers(query: string, params?: { page?: number; page_size?: number }): Promise<{ users: User[]; total: number; page: number; page_size: number }> {
+        const response = await this.client.get<{ users: User[]; total: number; page: number; page_size: number }>('/users/search', {
+            params: { q: query, ...params },
+        });
+        return response.data;
+    }
+
     // ========== 文档相关 API ==========
 
     /**
@@ -244,13 +260,51 @@ class ApiClient {
     /**
      * 获取文档版本列表
      */
-    async getDocumentVersions(id: number): Promise<VersionListResponse> {
-        const response = await this.client.get<VersionListResponse>(`/docs/${id}/versions`);
+    async getDocumentVersions(id: number, params?: VersionListParams): Promise<VersionListResponse> {
+        const response = await this.client.get<VersionListResponse>(`/docs/${id}/versions`, { params });
         return response.data;
     }
 
     /**
-     * 发布文档版本
+     * 获取单个版本详情
+     */
+    async getDocumentVersion(docId: number, versionId: number): Promise<DocumentVersion> {
+        const response = await this.client.get<DocumentVersion>(`/docs/${docId}/versions/${versionId}`);
+        return response.data;
+    }
+
+    /**
+     * 手动创建版本
+     */
+    async createVersion(docId: number, data: CreateVersionRequest): Promise<CreateVersionResponse> {
+        const response = await this.client.post<CreateVersionResponse>(`/docs/${docId}/versions`, data);
+        return response.data;
+    }
+
+    /**
+     * 恢复版本
+     */
+    async restoreVersion(docId: number, versionId: number): Promise<RestoreVersionResponse> {
+        const response = await this.client.post<RestoreVersionResponse>(
+            `/docs/${docId}/versions/${versionId}/restore`
+        );
+        return response.data;
+    }
+
+    /**
+     * 获取版本差异
+     */
+    async getVersionDiff(docId: number, versionId: number, baseVersionId?: number): Promise<VersionDiffResponse> {
+        const params = baseVersionId ? { base_version_id: baseVersionId } : {};
+        const response = await this.client.get<VersionDiffResponse>(
+            `/docs/${docId}/versions/${versionId}/diff`,
+            { params }
+        );
+        return response.data;
+    }
+
+    /**
+     * 发布文档版本（保留向后兼容）
      */
     async publishVersion(id: number, data: PublishVersionRequest): Promise<PublishVersionResponse> {
         const response = await this.client.post<PublishVersionResponse>(`/docs/${id}/publish`, data);
@@ -258,13 +312,15 @@ class ApiClient {
     }
 
     /**
-     * 回滚到指定版本
+     * 回滚到指定版本（保留向后兼容，实际调用 restoreVersion）
      */
     async rollbackVersion(docId: number, versionId: number): Promise<{ message: string; version_id: number; doc_id: number }> {
-        const response = await this.client.post<{ message: string; version_id: number; doc_id: number }>(
-            `/docs/${docId}/rollback/${versionId}`
-        );
-        return response.data;
+        const result = await this.restoreVersion(docId, versionId);
+        return {
+            message: result.message,
+            version_id: result.version_id,
+            doc_id: result.doc_id,
+        };
     }
 
     // ========== 协作相关 API ==========

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '../api/client';
-import { DocumentAcl, AclEntry, UpdateAclRequest } from '../types';
+import { DocumentAcl, AclEntry, UpdateAclRequest, User } from '../types';
 
 interface AclManagerProps {
     docId: number;
@@ -49,6 +49,10 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
     const [newPermission, setNewPermission] = useState<'editor' | 'viewer'>('editor');
     const [searchTerm, setSearchTerm] = useState('');
     const [forbidden, setForbidden] = useState(false);
+    const [userSearchQuery, setUserSearchQuery] = useState('');
+    const [userSearchResults, setUserSearchResults] = useState<User[]>([]);
+    const [userSearchLoading, setUserSearchLoading] = useState(false);
+    const [showUserSearch, setShowUserSearch] = useState(false);
 
     useEffect(() => {
         loadAcl();
@@ -61,6 +65,21 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
             return () => clearTimeout(timer);
         }
     }, [success]);
+
+    // 点击外部关闭搜索结果
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            if (!target.closest('.user-search-container')) {
+                setShowUserSearch(false);
+            }
+        };
+
+        if (showUserSearch) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [showUserSearch]);
 
     const loadAcl = async () => {
         try {
@@ -87,13 +106,15 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
     // 过滤权限列表
     const filteredAcl = useMemo(() => {
         if (!acl) return [];
-        if (!searchTerm.trim()) return acl.acl;
-        const term = searchTerm.toLowerCase();
+        const trimmed = searchTerm.trim();
+        if (!trimmed) return acl.acl;
+        const term = trimmed.toLowerCase();
         return acl.acl.filter((entry) => {
             const email = entry.email?.toLowerCase() || '';
             const nickname = entry.nickname?.toLowerCase() || '';
             const userId = entry.user_id.toString();
-            return email.includes(term) || nickname.includes(term) || userId.includes(term);
+            // 对于用户ID，直接使用原始搜索词进行匹配（不区分大小写）
+            return email.includes(term) || nickname.includes(term) || userId.includes(trimmed);
         });
     }, [acl, searchTerm]);
 
@@ -109,6 +130,44 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
     }, [acl]);
 
     const canManage = isOwner && !forbidden;
+
+    // 搜索用户
+    useEffect(() => {
+        const searchUsers = async () => {
+            if (!userSearchQuery.trim()) {
+                setUserSearchResults([]);
+                return;
+            }
+
+            setUserSearchLoading(true);
+            try {
+                console.log('Searching users with query:', userSearchQuery.trim());
+                const result = await apiClient.searchUsers(userSearchQuery.trim(), { page: 1, page_size: 10 });
+                console.log('Search results:', result);
+                setUserSearchResults(result.users || []);
+            } catch (err: any) {
+                console.error('Failed to search users:', err);
+                console.error('Error details:', err.response?.data || err.message);
+                setUserSearchResults([]);
+                // 显示错误提示
+                if (err.response?.status !== 401) {
+                    setError(err.response?.data?.error || '搜索用户失败，请稍后重试');
+                }
+            } finally {
+                setUserSearchLoading(false);
+            }
+        };
+
+        const timer = setTimeout(searchUsers, 300); // 防抖
+        return () => clearTimeout(timer);
+    }, [userSearchQuery]);
+
+    const handleSelectUser = (user: User) => {
+        setNewUserId(user.id.toString());
+        setUserSearchQuery('');
+        setUserSearchResults([]);
+        setShowUserSearch(false);
+    };
 
     const handleAddAcl = async () => {
         if (!canManage) return;
@@ -338,16 +397,92 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
                         添加用户权限
                     </h4>
                     <div className="flex flex-col sm:flex-row gap-3">
-                        <div className="flex-1">
+                        <div className="flex-1 relative user-search-container">
                             <input
-                                type="number"
-                                value={newUserId}
-                                onChange={(e) => setNewUserId(e.target.value)}
-                                placeholder="输入用户ID"
-                                min="1"
-                                className="w-full px-4 py-2.5 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm placeholder:text-gray-400"
+                                type="text"
+                                value={userSearchQuery || newUserId}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    setUserSearchQuery(value);
+                                    setShowUserSearch(true);
+                                    // 如果输入的是纯数字，也更新 newUserId
+                                    if (/^\d+$/.test(value)) {
+                                        setNewUserId(value);
+                                    } else {
+                                        setNewUserId('');
+                                    }
+                                }}
+                                onFocus={() => {
+                                    if (userSearchQuery) {
+                                        setShowUserSearch(true);
+                                    }
+                                }}
+                                placeholder="搜索用户（ID、邮箱、昵称）或输入用户ID"
+                                className="w-full px-4 py-2.5 pl-10 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm placeholder:text-gray-400"
                                 disabled={!canManage}
                             />
+                            <i className="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                            {userSearchQuery && (
+                                <button
+                                    onClick={() => {
+                                        setUserSearchQuery('');
+                                        setNewUserId('');
+                                        setUserSearchResults([]);
+                                        setShowUserSearch(false);
+                                    }}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    <i className="fa fa-times"></i>
+                                </button>
+                            )}
+                            {/* 搜索结果下拉框 */}
+                            {showUserSearch && userSearchQuery && (
+                                <div className="absolute z-10 w-full mt-1 bg-white border-2 border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                                    {userSearchLoading ? (
+                                        <div className="p-4 text-center text-sm text-gray-500">
+                                            <i className="fa fa-spinner fa-spin mr-2"></i>
+                                            搜索中...
+                                        </div>
+                                    ) : userSearchResults.length > 0 ? (
+                                        <div className="py-1">
+                                            {userSearchResults.map((user) => {
+                                                const isInAcl = acl?.acl.some((entry) => entry.user_id === user.id);
+                                                return (
+                                                    <button
+                                                        key={user.id}
+                                                        onClick={() => handleSelectUser(user)}
+                                                        disabled={isInAcl}
+                                                        className={`w-full text-left px-4 py-2 hover:bg-blue-50 transition-colors ${
+                                                            isInAcl ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 text-white font-bold flex items-center justify-center text-xs flex-shrink-0">
+                                                                {user.profile?.nickname?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className="text-sm font-medium text-gray-900 truncate">
+                                                                    {user.profile?.nickname || user.email}
+                                                                </div>
+                                                                <div className="text-xs text-gray-500 truncate">
+                                                                    {user.email} · ID: {user.id}
+                                                                </div>
+                                                            </div>
+                                                            {isInAcl && (
+                                                                <span className="text-xs text-gray-400 flex-shrink-0">已在列表中</span>
+                                                            )}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : userSearchQuery.trim() ? (
+                                        <div className="p-4 text-center text-sm text-gray-500">
+                                            未找到匹配的用户
+                                        </div>
+                                    ) : null}
+                                </div>
+                            )}
                         </div>
                         <select
                             value={newPermission}

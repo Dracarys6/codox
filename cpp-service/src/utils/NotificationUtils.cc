@@ -139,33 +139,33 @@ void NotificationUtils::insertNotification(int userId, const std::string& type, 
     std::string payloadStr = Json::writeString(builder, payload);
     std::string userIdStr = std::to_string(userId);
 
-    dbClient->execSqlAsync(
-            "INSERT INTO notification (user_id, type, payload) VALUES ($1::bigint, $2, $3::jsonb) "
-            "RETURNING id, user_id, type, payload, is_read, created_at",
-            [=](const drogon::orm::Result& r) {
-                if (r.empty()) {
-                    return;
-                }
+        dbClient->execSqlAsync(
+                "INSERT INTO notification (user_id, type, payload) VALUES ($1::bigint, $2, $3::jsonb) "
+                "RETURNING id, user_id, type, payload, is_read, created_at",
+                [=](const drogon::orm::Result& r) {
+                    if (r.empty()) {
+                        return;
+                    }
 
-                Json::Value notificationJson;
-                notificationJson["id"] = r[0]["id"].as<int>();
-                notificationJson["user_id"] = r[0]["user_id"].as<int>();
-                notificationJson["type"] = r[0]["type"].as<std::string>();
-                notificationJson["is_read"] = r[0]["is_read"].as<bool>();
-                notificationJson["created_at"] = r[0]["created_at"].as<std::string>();
+                    Json::Value notificationJson;
+                    notificationJson["id"] = r[0]["id"].as<int>();
+                    notificationJson["user_id"] = r[0]["user_id"].as<int>();
+                    notificationJson["type"] = r[0]["type"].as<std::string>();
+                    notificationJson["is_read"] = r[0]["is_read"].as<bool>();
+                    notificationJson["created_at"] = r[0]["created_at"].as<std::string>();
 
-                Json::Value payloadJson;
-                const std::string payloadText = r[0]["payload"].as<std::string>();
-                Json::CharReaderBuilder readerBuilder;
-                std::unique_ptr<Json::CharReader> reader(readerBuilder.newCharReader());
-                JSONCPP_STRING errs;
-                if (reader->parse(payloadText.data(), payloadText.data() + payloadText.size(), &payloadJson, &errs)) {
-                    notificationJson["payload"] = payloadJson;
-                } else {
-                    notificationJson["payload_raw"] = payloadText;
-                }
+                    Json::Value payloadJson;
+                    const std::string payloadText = r[0]["payload"].as<std::string>();
+                    Json::CharReaderBuilder readerBuilder;
+                    std::unique_ptr<Json::CharReader> reader(readerBuilder.newCharReader());
+                    JSONCPP_STRING errs;
+                    if (reader->parse(payloadText.data(), payloadText.data() + payloadText.size(), &payloadJson, &errs)) {
+                        notificationJson["payload"] = payloadJson;
+                    } else {
+                        notificationJson["payload_raw"] = payloadText;
+                    }
 
-                NotificationHub::pushNotification(userId, notificationJson);
-            },
+                    NotificationHub::pushNotification(userId, notificationJson);
+                },
             [](const drogon::orm::DrogonDbException&) {}, userIdStr, type, payloadStr);
 }

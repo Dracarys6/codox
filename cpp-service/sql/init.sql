@@ -23,6 +23,9 @@ CREATE TABLE document (
   title VARCHAR(255) NOT NULL,
   is_locked BOOLEAN NOT NULL DEFAULT FALSE,
   last_published_version_id BIGINT,
+  version_strategy VARCHAR(16) NOT NULL DEFAULT 'manual',
+  version_auto_interval_minutes INTEGER NOT NULL DEFAULT 30,
+  version_retention_limit INTEGER DEFAULT 50,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -38,12 +41,19 @@ CREATE TABLE doc_acl (
 CREATE TABLE document_version (
   id BIGSERIAL PRIMARY KEY,
   doc_id BIGINT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
+  version_number INTEGER NOT NULL DEFAULT 1,
   snapshot_url TEXT NOT NULL,
   snapshot_sha256 CHAR(64) NOT NULL,
   size_bytes BIGINT NOT NULL,
   created_by BIGINT NOT NULL REFERENCES "user"(id),
+  change_summary TEXT,
+  source VARCHAR(20) NOT NULL DEFAULT 'auto',
+  content_text TEXT,
+  content_html TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_document_version_doc_version ON document_version(doc_id, version_number DESC);
 
 -- 标签
 CREATE TABLE tag (

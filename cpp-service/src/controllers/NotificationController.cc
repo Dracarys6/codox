@@ -30,7 +30,7 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
             parsed = std::max(minValue, parsed);
             parsed = std::min(maxValue, parsed);
             return parsed;
-        } catch (...) {
+    } catch (...) {
             return defaultValue;
         }
     };
@@ -45,7 +45,7 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
         try {
             pageSize = std::stoi(pageSizeParam);
             pageSize = std::max(1, std::min(100, pageSize));
-        } catch (...) {
+    } catch (...) {
             pageSize = 20;
         }
     }
@@ -88,8 +88,8 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
             "  AND ($6 = '' OR n.created_at <= $6::timestamptz) ";
 
     std::string listSql = "SELECT n.id, n.type, n.payload::text AS payload_text, n.is_read, n.created_at " + baseQuery +
-                          "ORDER BY n.created_at DESC "
-                          "LIMIT $7::integer OFFSET $8::integer";
+            "ORDER BY n.created_at DESC "
+            "LIMIT $7::integer OFFSET $8::integer";
 
     std::string countSql = "SELECT COUNT(*) AS total " + baseQuery;
 

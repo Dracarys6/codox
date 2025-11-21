@@ -160,3 +160,150 @@ void UserController::updateMe(const HttpRequestPtr& req, std::function<void(cons
             },
             userIdStr, nickname, avatarUrl, bio);
 }
+
+void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
+    // 1.获取搜索关键词
+    std::string query = req->getParameter("q");
+    if (query.empty()) {
+        ResponseUtils::sendError(callback, "Query parameter 'q' is required", drogon::k400BadRequest);
+        return;
+    }
+
+    // 2.获取分页参数
+    int page = 1;
+    int pageSize = 20;
+
+    try {
+        std::string pageStr = req->getParameter("page");
+        if (!pageStr.empty()) {
+            page = std::max(1, std::stoi(pageStr));
+        }
+    } catch (...) {
+    }
+
+    try {
+        std::string pageSizeStr = req->getParameter("page_size");
+        if (!pageSizeStr.empty()) {
+            pageSize = std::max(1, std::min(100, std::stoi(pageSizeStr)));
+        }
+    } catch (...) {
+    }
+
+    // 3.获取数据库客户端
+    auto db = drogon::app().getDbClient();
+    if (!db) {
+        ResponseUtils::sendError(callback, "Database not available", drogon::k500InternalServerError);
+        return;
+    }
+
+    // 4.构建搜索查询
+    // 支持按用户ID、邮箱、昵称搜索
+    std::string searchPattern = "%" + query + "%";
+    int offset = (page - 1) * pageSize;
+
+    // 检查查询是否为纯数字（用户ID搜索）
+    bool isNumericQuery = false;
+    int userIdQuery = 0;
+    try {
+        userIdQuery = std::stoi(query);
+        isNumericQuery = true;
+    } catch (...) {
+        isNumericQuery = false;
+    }
+
+    // 先查询总数
+    std::string countQuery;
+    if (isNumericQuery) {
+        // 如果是数字，同时匹配ID和文本字段
+        countQuery =
+                "SELECT COUNT(*) as total "
+                "FROM \"user\" u "
+                "LEFT JOIN user_profile p ON u.id = p.user_id "
+                "WHERE u.id = $1::integer OR u.email ILIKE $2 OR COALESCE(p.nickname, '') ILIKE $2";
+    } else {
+        // 如果不是数字，只匹配文本字段
+        countQuery =
+                "SELECT COUNT(*) as total "
+                "FROM \"user\" u "
+                "LEFT JOIN user_profile p ON u.id = p.user_id "
+                "WHERE u.email ILIKE $1 OR COALESCE(p.nickname, '') ILIKE $1";
+    }
+
+    auto countCallback = [=](const drogon::orm::Result& countResult) mutable {
+        int total = 0;
+        if (!countResult.empty()) {
+            total = countResult[0]["total"].as<int>();
+        }
+
+        // 查询用户列表
+        std::string listQuery;
+        if (isNumericQuery) {
+            listQuery =
+                    "SELECT u.id, u.email, u.role, p.nickname, p.avatar_url, p.bio "
+                    "FROM \"user\" u "
+                    "LEFT JOIN user_profile p ON u.id = p.user_id "
+                    "WHERE u.id = $1::integer OR u.email ILIKE $2 OR COALESCE(p.nickname, '') ILIKE $2 "
+                    "ORDER BY u.id "
+                    "LIMIT $3 OFFSET $4";
+        } else {
+            listQuery =
+                    "SELECT u.id, u.email, u.role, p.nickname, p.avatar_url, p.bio "
+                    "FROM \"user\" u "
+                    "LEFT JOIN user_profile p ON u.id = p.user_id "
+                    "WHERE u.email ILIKE $1 OR COALESCE(p.nickname, '') ILIKE $1 "
+                    "ORDER BY u.id "
+                    "LIMIT $2 OFFSET $3";
+        }
+
+        auto listCallback = [=](const drogon::orm::Result& r) mutable {
+            Json::Value responseJson;
+            Json::Value usersArray(Json::arrayValue);
+
+            for (const auto& row : r) {
+                Json::Value userJson;
+                userJson["id"] = row["id"].as<int>();
+                userJson["email"] = row["email"].as<std::string>();
+                userJson["role"] = row["role"].as<std::string>();
+
+                Json::Value profileJson;
+                profileJson["nickname"] = row["nickname"].isNull() ? "" : row["nickname"].as<std::string>();
+                profileJson["avatar_url"] = row["avatar_url"].isNull() ? "" : row["avatar_url"].as<std::string>();
+                profileJson["bio"] = row["bio"].isNull() ? "" : row["bio"].as<std::string>();
+                userJson["profile"] = profileJson;
+
+                usersArray.append(userJson);
+            }
+
+            responseJson["users"] = usersArray;
+            responseJson["total"] = total;
+            responseJson["page"] = page;
+            responseJson["page_size"] = pageSize;
+
+            ResponseUtils::sendSuccess(callback, responseJson);
+        };
+
+        auto listErrorCallback = [=](const drogon::orm::DrogonDbException& e) mutable {
+            LOG_ERROR << "Database error in searchUsers: " << e.base().what();
+            ResponseUtils::sendError(callback, "Database error: " + std::string(e.base().what()),
+                                     drogon::k500InternalServerError);
+        };
+
+        if (isNumericQuery) {
+            db->execSqlAsync(listQuery, listCallback, listErrorCallback, userIdQuery, searchPattern, pageSize, offset);
+        } else {
+            db->execSqlAsync(listQuery, listCallback, listErrorCallback, searchPattern, pageSize, offset);
+        }
+    };
+
+    auto countErrorCallback = [=](const drogon::orm::DrogonDbException& e) mutable {
+        LOG_ERROR << "Database error in searchUsers (count): " << e.base().what();
+        ResponseUtils::sendError(callback, "Database error: " + std::string(e.base().what()),
+                                 drogon::k500InternalServerError);
+    };
+
+    if (isNumericQuery) {
+        db->execSqlAsync(countQuery, countCallback, countErrorCallback, userIdQuery, searchPattern);
+    } else {
+        db->execSqlAsync(countQuery, countCallback, countErrorCallback, searchPattern);
+    }
+}

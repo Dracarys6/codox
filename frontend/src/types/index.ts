@@ -218,15 +218,28 @@ export interface NotificationFilterParams {
 export interface DocumentVersion {
     id: number;
     doc_id: number;
+    version_number: number;
     snapshot_url: string;
     snapshot_sha256: string;
     size_bytes: number;
     created_by: number;
+    change_summary?: string;
+    source: 'auto' | 'manual' | 'restore';
+    content_text?: string;
+    content_html?: string;
     created_at: string;
+    creator_email?: string;
+    creator_nickname?: string;
 }
 
 export interface VersionListResponse {
     versions: DocumentVersion[];
+}
+
+export interface VersionListParams {
+    start_date?: string;
+    end_date?: string;
+    created_by?: number;
 }
 
 export interface PublishVersionRequest {
@@ -240,5 +253,40 @@ export interface PublishVersionResponse {
     doc_id: number;
     snapshot_url: string;
     created_at: string;
+}
+
+export interface CreateVersionRequest {
+    snapshot_url: string;
+    sha256: string;
+    size_bytes: number;
+    change_summary?: string;
+    content_text?: string;
+    content_html?: string;
+}
+
+export interface CreateVersionResponse {
+    version_id: number;
+    version_number: number;
+    doc_id: number;
+    message: string;
+}
+
+export interface RestoreVersionResponse {
+    version_id: number;
+    version_number: number;
+    doc_id: number;
+    restored_from_version_id: number;
+    message: string;
+}
+
+export interface DiffSegment {
+    op: 'equal' | 'insert' | 'delete';
+    text: string;
+}
+
+export interface VersionDiffResponse {
+    base_version_id: number | null;
+    target_version_id: number;
+    diff: DiffSegment[];
 }
 

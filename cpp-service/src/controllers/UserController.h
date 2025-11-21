@@ -12,6 +12,7 @@ public:
     METHOD_LIST_BEGIN
     ADD_METHOD_TO(UserController::getMe, "/api/users/me", Get, "JwtAuthFilter");
     ADD_METHOD_TO(UserController::updateMe, "/api/users/me", Patch, "JwtAuthFilter");
+    ADD_METHOD_TO(UserController::searchUsers, "/api/users/search", Get, "JwtAuthFilter");
     METHOD_LIST_END
 
     // 获取当前用户信息(需要认证)
@@ -19,4 +20,7 @@ public:
 
     // 更新当前用户信息(需要认证)
     void updateMe(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
+    // 搜索用户(需要认证)
+    void searchUsers(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 };

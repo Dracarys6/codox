@@ -80,6 +80,7 @@ void SearchController::search(const HttpRequestPtr& req, std::function<void(cons
                     responseJson["query"] = query;
                     responseJson["page"] = page;
                     responseJson["page_size"] = pageSize;
+                    responseJson["total"] = 0;
                     responseJson["total_hits"] = 0;
                     ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                     return;
@@ -125,7 +126,9 @@ void SearchController::search(const HttpRequestPtr& req, std::function<void(cons
                             responseJson["query"] = query;
                             responseJson["page"] = page;
                             responseJson["page_size"] = pageSize;
-                            responseJson["total_hits"] = static_cast<int>(filteredHits.size());
+                            int filteredTotal = static_cast<int>(filteredHits.size());
+                            responseJson["total_hits"] = filteredTotal;
+                            responseJson["total"] = filteredTotal;
 
                             ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                         },

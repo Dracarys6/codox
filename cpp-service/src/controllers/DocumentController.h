@@ -16,6 +16,11 @@ public:
     ADD_METHOD_TO(DocumentController::deleteDoc, "/api/docs/{id}", Delete, "JwtAuthFilter");
     ADD_METHOD_TO(DocumentController::getAcl, "/api/docs/{id}/acl", Get, "JwtAuthFilter");
     ADD_METHOD_TO(DocumentController::updateAcl, "/api/docs/{id}/acl", Put, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::getVersions, "/api/docs/{id}/versions", Get, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::getVersion, "/api/docs/{id}/versions/{versionId}", Get, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::createVersion, "/api/docs/{id}/versions", Post, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::restoreVersion, "/api/docs/{id}/versions/{versionId}/restore", Post, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::getVersionDiff, "/api/docs/{id}/versions/{versionId}/diff", Get, "JwtAuthFilter");
 
     METHOD_LIST_END
 
@@ -39,4 +44,19 @@ public:
 
     // 更新文档acl
     void updateAcl(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+
+    // 获取文档版本列表
+    void getVersions(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+
+    // 获取单个版本详情
+    void getVersion(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+
+    // 手动创建版本
+    void createVersion(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+
+    // 恢复版本
+    void restoreVersion(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+
+    // 获取版本差异
+    void getVersionDiff(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
 };

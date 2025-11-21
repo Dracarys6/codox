@@ -54,12 +54,17 @@ void SearchService::search(const std::string& query, int page, int pageSize,
     auto client = drogon::HttpClient::newHttpClient(getMeilisearchUrl());
     auto req = drogon::HttpRequest::newHttpRequest();
 
-    std::string path = "/indexes/documents/search?q=" + query + "&page=" + std::to_string(page) +
-                       "&hitsPerPage=" + std::to_string(pageSize);
-
-    req->setMethod(drogon::Get);
-    req->setPath(path);
+    req->setMethod(drogon::Post);
+    req->setPath("/indexes/documents/search");
     req->addHeader("Authorization", "Bearer " + getMasterKey());
+    req->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+
+    Json::Value payload;
+    payload["q"] = query;
+    payload["page"] = page;
+    payload["hitsPerPage"] = pageSize;
+    Json::StreamWriterBuilder builder;
+    req->setBody(Json::writeString(builder, payload));
 
     client->sendRequest(req, [callback, errorCallback](drogon::ReqResult result, const drogon::HttpResponsePtr& resp) {
         if (result != drogon::ReqResult::Ok) {
