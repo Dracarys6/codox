@@ -588,6 +588,74 @@ class ApiClient {
         return !!localStorage.getItem('access_token');
     }
 
+    // ========== 文档导入导出 API ==========
+
+    /**
+     * 导入 Word 文档
+     */
+    async importWord(file: File): Promise<Document> {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await this.client.post<Document>('/docs/import/word', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+        return response.data;
+    }
+
+    /**
+     * 导入 PDF 文档
+     */
+    async importPdf(file: File): Promise<Document> {
+        const formData = new FormData();
+        formData.append('file', file);
+        const response = await this.client.post<Document>('/docs/import/pdf', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+        return response.data;
+    }
+
+    /**
+     * 导入 Markdown 文档
+     */
+    async importMarkdown(data: { markdown: string; title?: string }): Promise<Document> {
+        const response = await this.client.post<Document>('/docs/import/markdown', data);
+        return response.data;
+    }
+
+    /**
+     * 导出 Word 文档
+     */
+    async exportWord(docId: number): Promise<{ data: string; filename: string; mime_type: string }> {
+        const response = await this.client.get<{ data: string; filename: string; mime_type: string }>(
+            `/docs/${docId}/export/word`
+        );
+        return response.data;
+    }
+
+    /**
+     * 导出 PDF 文档
+     */
+    async exportPdf(docId: number): Promise<{ data: string; filename: string; mime_type: string }> {
+        const response = await this.client.get<{ data: string; filename: string; mime_type: string }>(
+            `/docs/${docId}/export/pdf`
+        );
+        return response.data;
+    }
+
+    /**
+     * 导出 Markdown 文档
+     */
+    async exportMarkdown(docId: number): Promise<{ markdown: string; filename: string; mime_type: string }> {
+        const response = await this.client.get<{ markdown: string; filename: string; mime_type: string }>(
+            `/docs/${docId}/export/markdown`
+        );
+        return response.data;
+    }
+
     /**
      * 获取当前用户（从 localStorage）
      */

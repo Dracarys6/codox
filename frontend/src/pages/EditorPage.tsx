@@ -8,6 +8,7 @@ import { CommentPanel } from '../components/CommentPanel';
 import { TaskPanel } from '../components/TaskPanel';
 import { AclManager } from '../components/AclManager';
 import { ChatPanel } from '../components/chat/ChatPanel';
+import { ExportMenu } from '../components/ExportMenu';
 
 type SideTabKey = 'info' | 'comments' | 'tasks' | 'acl' | 'chat';
 
@@ -224,6 +225,7 @@ export function EditorPage() {
                   </div>
                 ) : null}
               </div>
+              <ExportMenu docId={docId} docTitle={title || document?.title} variant="button" />
               <button
                 onClick={handleSave}
                 disabled={isSaving}

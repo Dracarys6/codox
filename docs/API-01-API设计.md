@@ -23,6 +23,9 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 ### 用户资料
 - `GET /api/users/me` — 获取当前用户信息，包含 `profile` 扩展字段。
 - `PATCH /api/users/me` — 更新昵称、头像、简介，自动 upsert `user_profile`。
+- `GET /api/users/search` — 搜索用户，支持按用户ID、邮箱、昵称搜索；支持分页（`q`、`page`、`page_size` 参数），返回用户列表及总数。
+
+> ✅ 用户搜索模块已完成实现，支持多字段搜索和分页功能，主要用于 ACL 权限管理中添加协作者。
 
 ### 文档 CRUD
 - `POST /api/docs` — 新建文档，标题必填；自动创建 owner ACL，可附带初始标签。
@@ -92,8 +95,6 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 
 ### 通知过滤 & 偏好
 - `GET /api/notifications` — 增强查询参数：`type`、`doc_id`、`start_date`、`end_date`、`unread_only`。
-- `GET /api/notification-settings` — 查询当前用户对各类通知的偏好（站内 / 邮件 / 推送）。
-- `PUT /api/notification-settings/{type}` — 更新单个通知类型的偏好。
 - WebSocket 通道：在 `collab-service` 中扩展 `/notifications`，推送实时通知。
 
 ### 文档导入导出
@@ -143,7 +144,7 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 - **文档编辑页** `DocumentEditorPage.tsx`  
   富文本编辑器、实时协作状态指示、自动保存反馈、返回入口。
 - **ACL 管理面板** `AclManager.tsx`  
-  所有成员与权限枚举展示、批量编辑对话框、防止 owner 权限被移除。
+  所有成员与权限枚举展示、批量编辑对话框、防止 owner 权限被移除；支持搜索数据库中的用户并添加到权限列表。
 - **版本管理面板**  
   版本列表（版本号、作者、发布时间、备注）、发布按钮、回滚操作确认。
 

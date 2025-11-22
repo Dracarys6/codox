@@ -9,6 +9,8 @@ import { ProfilePage } from './pages/ProfilePage';
 import { SearchPage } from './pages/SearchPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { VersionManagementPage } from './pages/VersionManagementPage';
+import { ToastContainer, toast } from './components/ui/Toast';
+import { useEffect, useState } from 'react';
 import './index.css';
 
 // 受保护的路由组件
@@ -31,6 +33,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const [toasts, setToasts] = useState<Array<{ id: string; message: string; type: 'success' | 'error' | 'warning' | 'info' }>>([]);
+
+  useEffect(() => {
+    const unsubscribe = toast.subscribe(setToasts);
+    return unsubscribe;
+  }, []);
+
   return (
     <AuthProvider>
       <BrowserRouter
@@ -39,6 +48,7 @@ function App() {
           v7_relativeSplatPath: true,
         }}
       >
+        <ToastContainer toasts={toasts} onClose={toast.remove} />
         <Routes>
           <Route path="/" element={<Navigate to="/home" replace />} />
           <Route path="/login" element={<LoginPage />} />

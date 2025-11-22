@@ -19,8 +19,16 @@ public:
     ADD_METHOD_TO(DocumentController::getVersions, "/api/docs/{id}/versions", Get, "JwtAuthFilter");
     ADD_METHOD_TO(DocumentController::getVersion, "/api/docs/{id}/versions/{versionId}", Get, "JwtAuthFilter");
     ADD_METHOD_TO(DocumentController::createVersion, "/api/docs/{id}/versions", Post, "JwtAuthFilter");
-    ADD_METHOD_TO(DocumentController::restoreVersion, "/api/docs/{id}/versions/{versionId}/restore", Post, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::restoreVersion, "/api/docs/{id}/versions/{versionId}/restore", Post,
+                  "JwtAuthFilter");
     ADD_METHOD_TO(DocumentController::getVersionDiff, "/api/docs/{id}/versions/{versionId}/diff", Get, "JwtAuthFilter");
+    // 文档导入导出接口
+    ADD_METHOD_TO(DocumentController::importWord, "/api/docs/import/word", Post, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::importPdf, "/api/docs/import/pdf", Post, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::importMarkdown, "/api/docs/import/markdown", Post, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::exportWord, "/api/docs/{id}/export/word", Get, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::exportPdf, "/api/docs/{id}/export/pdf", Get, "JwtAuthFilter");
+    ADD_METHOD_TO(DocumentController::exportMarkdown, "/api/docs/{id}/export/markdown", Get, "JwtAuthFilter");
 
     METHOD_LIST_END
 
@@ -59,4 +67,14 @@ public:
 
     // 获取版本差异
     void getVersionDiff(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+
+    // 文档导入接口
+    void importWord(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void importPdf(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void importMarkdown(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+
+    // 文档导出接口
+    void exportWord(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void exportPdf(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void exportMarkdown(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
 };

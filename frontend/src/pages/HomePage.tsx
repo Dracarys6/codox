@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import { Document } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
+import { ImportModal } from '../components/ImportModal';
+import { ExportMenu } from '../components/ExportMenu';
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
@@ -14,6 +16,7 @@ export function HomePage() {
   const [totalDocs, setTotalDocs] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isAlertVisible, setIsAlertVisible] = useState(true);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   useEffect(() => {
     loadDocuments();
@@ -159,15 +162,22 @@ export function HomePage() {
                 {continueDoc && (
                   <Link
                     to={`/editor/${continueDoc.id}`}
-                    className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-sm text-primary bg-white hover:bg-gray-100 transition-colors"
+                    className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg shadow-lg text-primary bg-white hover:bg-gray-100 transition-all transform hover:scale-105"
                   >
                     继续编辑文档
                     <i className="fa fa-arrow-right ml-2"></i>
                   </Link>
                 )}
                 <button
+                  onClick={() => setShowImportModal(true)}
+                  className="inline-flex items-center px-6 py-3 border border-white/30 text-base font-medium rounded-lg shadow-lg bg-white/10 hover:bg-white/20 transition-all transform hover:scale-105 backdrop-blur-sm"
+                >
+                  <i className="fa fa-upload mr-2"></i>
+                  导入文档
+                </button>
+                <button
                   onClick={handleCreateDocument}
-                  className="inline-flex items-center px-6 py-3 border border-white/30 text-base font-medium rounded-lg shadow-sm bg-white/10 hover:bg-white/20 transition-colors"
+                  className="inline-flex items-center px-6 py-3 border border-white/30 text-base font-medium rounded-lg shadow-lg bg-white/10 hover:bg-white/20 transition-all transform hover:scale-105 backdrop-blur-sm"
                 >
                   <i className="fa fa-plus mr-2"></i>
                   创建新文档
@@ -238,33 +248,42 @@ export function HomePage() {
           </div>
 
           {/* 快速功能导航 */}
+          <div className="mb-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">快速操作</h2>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">
             <button
               onClick={handleCreateDocument}
-              className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100"
+              className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100 hover:border-primary/30 hover:shadow-md transition-all"
             >
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/10 to-primary/20 flex items-center justify-center mb-3 shadow-sm">
                 <i className="fa fa-file-text-o text-primary text-xl"></i>
               </div>
               <h3 className="font-medium text-gray-900">新建文档</h3>
               <p className="text-sm text-gray-500 mt-1">从头开始创作</p>
             </button>
 
-            <button className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100">
-              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center mb-3">
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100 hover:border-purple-300 hover:shadow-md transition-all"
+            >
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center mb-3 shadow-sm">
                 <i className="fa fa-upload text-purple-600 text-xl"></i>
               </div>
-              <h3 className="font-medium text-gray-900">上传文档</h3>
-              <p className="text-sm text-gray-500 mt-1">导入本地文件</p>
+              <h3 className="font-medium text-gray-900">导入文档</h3>
+              <p className="text-sm text-gray-500 mt-1">支持 Word/PDF/Markdown</p>
             </button>
 
-            <button className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100">
-              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mb-3">
+            <Link
+              to="/documents"
+              className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all"
+            >
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mb-3 shadow-sm">
                 <i className="fa fa-share-alt text-blue-600 text-xl"></i>
               </div>
-              <h3 className="font-medium text-gray-900">共享文档</h3>
-              <p className="text-sm text-gray-500 mt-1">邀请协作者</p>
-            </button>
+              <h3 className="font-medium text-gray-900">管理文档</h3>
+              <p className="text-sm text-gray-500 mt-1">查看所有文档</p>
+            </Link>
           </div>
 
           {/* 最近文档 */}
@@ -343,19 +362,22 @@ export function HomePage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <Link
-                            to={`/editor/${doc.id}`}
-                            className="text-primary hover:text-primary/80 mr-4"
-                          >
-                            编辑
-                          </Link>
-                          <button
-                            onClick={() => handleDeleteDocument(doc.id, doc.title)}
-                            className="text-danger hover:text-danger/80 transition-custom"
-                            title="删除文档"
-                          >
-                            <i className="fa fa-trash-o mr-1"></i>删除
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <ExportMenu docId={doc.id} docTitle={doc.title} variant="dropdown" />
+                            <Link
+                              to={`/editor/${doc.id}`}
+                              className="text-primary hover:text-primary/80"
+                            >
+                              编辑
+                            </Link>
+                            <button
+                              onClick={() => handleDeleteDocument(doc.id, doc.title)}
+                              className="text-danger hover:text-danger/80 transition-custom"
+                              title="删除文档"
+                            >
+                              <i className="fa fa-trash-o mr-1"></i>删除
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -392,6 +414,16 @@ export function HomePage() {
           </div>
         </div>
       </footer>
+
+      {/* 导入文档弹窗 */}
+      <ImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportSuccess={(document) => {
+          loadDocuments();
+          navigate(`/editor/${document.id}`);
+        }}
+      />
     </div>
   );
 }

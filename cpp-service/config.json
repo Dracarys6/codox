@@ -16,7 +16,8 @@
         "minio_endpoint": "localhost:9000",
         "minio_access_key": "minioadmin",
         "minio_secret_key": "minioadmin",
-        "minio_bucket": "documents"
+        "minio_bucket": "documents",
+        "doc_converter_url": "http://localhost:3002"
     },
     "log": {
         "log_path": "./logs",

@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import { Document, DocumentListParams } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
+import { ImportModal } from '../components/ImportModal';
+import { ExportMenu } from '../components/ExportMenu';
 
 export function DocumentsPage() {
   const { user } = useAuth();
@@ -18,6 +20,7 @@ export function DocumentsPage() {
   const [filterOption, setFilterOption] = useState<'all' | 'my' | 'shared' | 'recent'>('all');
   const [selectedTag, setSelectedTag] = useState<string | 'all'>('all');
   const [selectedDocs, setSelectedDocs] = useState<number[]>([]);
+  const [showImportModal, setShowImportModal] = useState(false);
   const pageSize = 10;
 
   useEffect(() => {
@@ -233,6 +236,12 @@ export function DocumentsPage() {
                   {viewMode === 'table' ? '卡片视图' : '列表视图'}
                 </button>
                 <button
+                  onClick={() => setShowImportModal(true)}
+                  className="inline-flex items-center px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-custom shadow-lg shadow-green-600/20"
+                >
+                  <i className="fa fa-upload mr-2"></i>导入文档
+                </button>
+                <button
                   onClick={handleCreateDocument}
                   className="inline-flex items-center px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-custom shadow-lg shadow-primary/20"
                 >
@@ -411,18 +420,21 @@ export function DocumentsPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Link
-                          to={`/editor/${doc.id}`}
-                          className="text-primary hover:text-primary/80 mr-4"
-                        >
-                          编辑
-                        </Link>
-                        <button
-                          onClick={() => handleDeleteDocument(doc.id)}
-                          className="text-danger hover:text-danger/80"
-                        >
-                          删除
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <ExportMenu docId={doc.id} docTitle={doc.title} variant="dropdown" />
+                          <Link
+                            to={`/editor/${doc.id}`}
+                            className="text-primary hover:text-primary/80"
+                          >
+                            编辑
+                          </Link>
+                          <button
+                            onClick={() => handleDeleteDocument(doc.id)}
+                            className="text-danger hover:text-danger/80"
+                          >
+                            删除
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -453,7 +465,8 @@ export function DocumentsPage() {
                     <span className="px-2 py-1 rounded-full bg-green-100 text-green-800 text-xs">
                       {doc.is_locked ? '已锁定' : '已保存'}
                     </span>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2">
+                      <ExportMenu docId={doc.id} docTitle={doc.title} variant="dropdown" />
                       <Link
                         to={`/editor/${doc.id}`}
                         className="text-primary hover:text-primary/80 text-sm"
@@ -514,6 +527,16 @@ export function DocumentsPage() {
           </div>
         </div>
       </footer>
+
+      {/* 导入文档弹窗 */}
+      <ImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportSuccess={(document) => {
+          loadDocuments();
+          navigate(`/editor/${document.id}`);
+        }}
+      />
     </div>
   );
 }

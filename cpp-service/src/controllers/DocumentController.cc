@@ -1,8 +1,14 @@
 #include "DocumentController.h"
 
+#include <drogon/HttpClient.h>
+#include <drogon/MultiPart.h>
 #include <drogon/drogon.h>
 #include <json/json.h>
 
+#include <cstdlib>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <memory>
 #include <numeric>
@@ -1747,5 +1753,933 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
                                              k500InternalServerError);
                 },
                 std::to_string(versionId), std::to_string(docId));
+    });
+}
+// ========== 文档导入导出功能实现 ==========
+
+// 辅助函数：从配置文件获取 doc-converter-service URL
+static std::string getConverterServiceUrl() {
+    std::ifstream configFile("config.json");
+    if (!configFile.is_open()) {
+        configFile.open("../config.json");
+        if (!configFile.is_open()) {
+            return "http://localhost:3002";  // 默认值
+        }
+    }
+
+    Json::Value config;
+    Json::Reader reader;
+    if (reader.parse(configFile, config) && config.isMember("app")) {
+        if (config["app"].isMember("doc_converter_url")) {
+            return config["app"]["doc_converter_url"].asString();
+        }
+    }
+    return "http://localhost:3002";  // 默认值
+}
+
+// Word 文档导入
+void DocumentController::importWord(const HttpRequestPtr &req,
+                                    std::function<void(const HttpResponsePtr &)> &&callback) {
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "Unauthorized", k401Unauthorized);
+        return;
+    }
+    int userId = std::stoi(userIdStr);
+
+    drogon::MultiPartParser parser;
+    if (parser.parse(req) != 0) {
+        ResponseUtils::sendError(callback, "Failed to parse uploaded file", k400BadRequest);
+        return;
+    }
+    const auto &files = parser.getFiles();
+    if (files.empty()) {
+        ResponseUtils::sendError(callback, "No file uploaded", k400BadRequest);
+        return;
+    }
+    const auto &file = files.front();
+    
+    // 检查文件大小
+    size_t fileSize = file.fileLength();
+    if (fileSize == 0) {
+        ResponseUtils::sendError(callback, "Uploaded file is empty", k400BadRequest);
+        return;
+    }
+
+    std::string converterUrl = getConverterServiceUrl();
+    auto client = drogon::HttpClient::newHttpClient(converterUrl);
+    auto converterReq = drogon::HttpRequest::newHttpRequest();
+    converterReq->setMethod(drogon::Post);
+    converterReq->setPath("/convert/word-to-html");
+
+    // 构建 multipart/form-data 请求体
+    // 生成唯一的 boundary（注意：boundary 本身不包含 --，在构建请求体时添加）
+    std::string boundary = "WebKitFormBoundary" + std::to_string(time(nullptr)) + std::to_string(rand());
+    
+    // 获取文件内容
+    const auto& fileContent = file.fileContent();
+    size_t contentSize = fileContent.size();
+    if (contentSize == 0 || contentSize != fileSize) {
+        std::cerr << "Word import: File content is empty or size mismatch. ContentSize: " 
+                  << contentSize << ", FileSize: " << fileSize << std::endl;
+        ResponseUtils::sendError(callback, "File content is empty or size mismatch", k400BadRequest);
+        return;
+    }
+    
+    std::cerr << "Word import: File size: " << fileSize << ", File name: " << file.getFileName() << std::endl;
+    
+    // 构建 multipart/form-data 请求体
+    // 注意：multipart/form-data 格式要求：
+    // 1. 每个部分以 --boundary\r\n 开头
+    // 2. 头部和内容之间用 \r\n\r\n 分隔
+    // 3. 文件内容后需要 \r\n
+    // 4. 最后以 \r\n--boundary--\r\n 结尾
+    
+    // 使用 string 和 vector 组合来构建请求体，确保二进制数据正确处理
+    std::string fileName = file.getFileName();
+    
+    // 构建头部部分
+    std::string header = "--" + boundary + "\r\n";
+    header += "Content-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\n";
+    header += "Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document\r\n";
+    header += "\r\n";  // 头部和内容之间的空行
+    
+    // 构建尾部部分
+    std::string footer = "\r\n--" + boundary + "--\r\n";
+    
+    // 计算总大小
+    size_t totalSize = header.size() + fileSize + footer.size();
+    
+    // 使用 vector<char> 来存储完整的请求体
+    std::vector<char> bodyVec;
+    bodyVec.reserve(totalSize);
+    
+    // 添加头部
+    bodyVec.insert(bodyVec.end(), header.begin(), header.end());
+    
+    // 添加文件内容（二进制数据）
+    const char* fileData = reinterpret_cast<const char*>(fileContent.data());
+    bodyVec.insert(bodyVec.end(), fileData, fileData + fileSize);
+    
+    // 添加尾部
+    bodyVec.insert(bodyVec.end(), footer.begin(), footer.end());
+    
+    // 转换为字符串
+    std::string bodyStr(bodyVec.data(), bodyVec.size());
+    std::cerr << "Word import: Request body size: " << bodyStr.length() 
+             << ", Boundary: " << boundary << std::endl;
+    
+    converterReq->addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
+    converterReq->addHeader("Content-Length", std::to_string(bodyStr.length()));
+    converterReq->setBody(bodyStr);
+
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+
+    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+        if (result != drogon::ReqResult::Ok) {
+            std::string errorMsg = "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
+            std::cerr << "Word import: Failed to connect to converter service. Result: " << static_cast<int>(result) << std::endl;
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+        if (resp->getStatusCode() != k200OK) {
+            std::string errorMsg = "Converter service returned error: " + std::to_string(resp->getStatusCode());
+            std::string responseBody;
+            if (resp->getBody().size() > 0) {
+                responseBody = std::string(resp->getBody().data(), resp->getBody().size());
+                errorMsg += " - " + responseBody.substr(0, 500); // 显示前500字符
+            }
+            std::cerr << "Word import: Converter service error. Status: " << resp->getStatusCode() 
+                      << ", Body: " << responseBody << std::endl;
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+
+        auto jsonPtr = resp->getJsonObject();
+        if (!jsonPtr) {
+            std::string errorMsg = "Invalid JSON response from converter service";
+            if (resp->getBody().size() > 0) {
+                errorMsg += ": " + std::string(resp->getBody().data(), std::min(resp->getBody().size(), size_t(200)));
+            }
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+        
+        if (jsonPtr->isMember("error")) {
+            std::string errorMsg = "Conversion failed: " + (*jsonPtr)["error"].asString();
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+        
+        if (!jsonPtr->isMember("html")) {
+            ResponseUtils::sendError(*callbackPtr, "Invalid conversion response: missing 'html' field", k500InternalServerError);
+            return;
+        }
+
+        std::string html = (*jsonPtr)["html"].asString();
+        std::string title = file.getFileName();
+        size_t dotPos = title.find_last_of('.');
+        if (dotPos != std::string::npos) {
+            title = title.substr(0, dotPos);
+        }
+
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "INSERT INTO document (title, owner_id, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) "
+                "RETURNING id",
+                [=](const drogon::orm::Result &r) {
+                    if (r.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Failed to create document", k500InternalServerError);
+                        return;
+                    }
+                    int docId = r[0]["id"].as<int>();
+
+                    // 为导入的文档创建版本，使用占位符值
+                    std::string placeholderUrl = "import://word/" + std::to_string(docId);
+                    std::string placeholderSha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+                    int64_t contentSize = static_cast<int64_t>(html.length());
+
+                    db->execSqlAsync(
+                            "INSERT INTO document_version (doc_id, version_number, snapshot_url, snapshot_sha256, "
+                            "size_bytes, content_html, created_by, source, created_at) "
+                            "VALUES ($1, 1, $2, $3, $4, $5, $6, 'import', NOW()) RETURNING id",
+                            [=](const drogon::orm::Result &r) {
+                                if (r.empty()) {
+                                    ResponseUtils::sendError(*callbackPtr, "Failed to create version", k500InternalServerError);
+                                    return;
+                                }
+                                int versionId = r[0]["id"].as<int>();
+                                
+                                // 更新文档的 last_published_version_id
+                                db->execSqlAsync(
+                                        "UPDATE document SET last_published_version_id = $1::bigint, updated_at = NOW() "
+                                        "WHERE id = $2::bigint",
+                                        [=](const drogon::orm::Result &) {
+                                            Json::Value responseJson;
+                                            responseJson["id"] = docId;
+                                            responseJson["title"] = title;
+                                            responseJson["message"] = "Document imported successfully";
+                                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                                        },
+                                        [=](const drogon::orm::DrogonDbException &e) {
+                                            ResponseUtils::sendError(*callbackPtr,
+                                                                     "Database error: " + std::string(e.base().what()),
+                                                                     k500InternalServerError);
+                                        },
+                                        std::to_string(versionId), std::to_string(docId));
+                            },
+                            [=](const drogon::orm::DrogonDbException &e) {
+                                ResponseUtils::sendError(*callbackPtr,
+                                                         "Database error: " + std::string(e.base().what()),
+                                                         k500InternalServerError);
+                            },
+                            std::to_string(docId), placeholderUrl, placeholderSha256, std::to_string(contentSize), html,
+                            std::to_string(userId));
+                },
+                [=](const drogon::orm::DrogonDbException &e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                title, std::to_string(userId));
+    });
+}
+
+// PDF 文档导入
+void DocumentController::importPdf(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "Unauthorized", k401Unauthorized);
+        return;
+    }
+    int userId = std::stoi(userIdStr);
+
+    drogon::MultiPartParser parser;
+    if (parser.parse(req) != 0) {
+        ResponseUtils::sendError(callback, "Failed to parse uploaded file", k400BadRequest);
+        return;
+    }
+    const auto &files = parser.getFiles();
+    if (files.empty()) {
+        ResponseUtils::sendError(callback, "No file uploaded", k400BadRequest);
+        return;
+    }
+    const auto &file = files.front();
+
+    std::string converterUrl = getConverterServiceUrl();
+    auto client = drogon::HttpClient::newHttpClient(converterUrl);
+    auto converterReq = drogon::HttpRequest::newHttpRequest();
+    converterReq->setMethod(drogon::Post);
+    converterReq->setPath("/convert/pdf-to-text");
+
+    std::string boundary = "----WebKitFormBoundary" + std::to_string(time(nullptr));
+    converterReq->addHeader("Content-Type", "multipart/form-data; boundary=" + boundary);
+
+    std::stringstream body;
+    body << "--" << boundary << "\r\n";
+    body << "Content-Disposition: form-data; name=\"file\"; filename=\"" << file.getFileName() << "\"\r\n";
+    body << "Content-Type: application/pdf\r\n\r\n";
+    body << std::string(file.fileContent().data(), file.fileLength());
+    body << "\r\n--" << boundary << "--\r\n";
+    converterReq->setBody(body.str());
+
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+
+    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+        if (result != drogon::ReqResult::Ok) {
+            std::string errorMsg = "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
+            std::cerr << "PDF import: Failed to connect to converter service. Result: " << static_cast<int>(result) << std::endl;
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+        if (resp->getStatusCode() != k200OK) {
+            std::string errorMsg = "Converter service returned error: " + std::to_string(resp->getStatusCode());
+            std::string responseBody;
+            if (resp->getBody().size() > 0) {
+                responseBody = std::string(resp->getBody().data(), resp->getBody().size());
+                errorMsg += " - " + responseBody.substr(0, 500);
+            }
+            std::cerr << "PDF import: Converter service error. Status: " << resp->getStatusCode() 
+                      << ", Body: " << responseBody << std::endl;
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+
+        auto jsonPtr = resp->getJsonObject();
+        if (!jsonPtr) {
+            std::string errorMsg = "Invalid JSON response from converter service";
+            if (resp->getBody().size() > 0) {
+                errorMsg += ": " + std::string(resp->getBody().data(), std::min(resp->getBody().size(), size_t(200)));
+            }
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+        
+        if (jsonPtr->isMember("error")) {
+            std::string errorMsg = "Conversion failed: " + (*jsonPtr)["error"].asString();
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+        
+        if (!jsonPtr->isMember("text")) {
+            ResponseUtils::sendError(*callbackPtr, "Invalid conversion response: missing 'text' field", k500InternalServerError);
+            return;
+        }
+
+        std::string text = (*jsonPtr)["text"].asString();
+        std::string title = file.getFileName();
+        size_t dotPos = title.find_last_of('.');
+        if (dotPos != std::string::npos) {
+            title = title.substr(0, dotPos);
+        }
+
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "INSERT INTO document (title, owner_id, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) "
+                "RETURNING id",
+                [=](const drogon::orm::Result &r) {
+                    if (r.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Failed to create document", k500InternalServerError);
+                        return;
+                    }
+                    int docId = r[0]["id"].as<int>();
+
+                    // 为导入的文档创建版本，使用占位符值
+                    std::string placeholderUrl = "import://pdf/" + std::to_string(docId);
+                    std::string placeholderSha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+                    int64_t contentSize = static_cast<int64_t>(text.length());
+
+                    db->execSqlAsync(
+                            "INSERT INTO document_version (doc_id, version_number, snapshot_url, snapshot_sha256, "
+                            "size_bytes, content_text, created_by, source, created_at) "
+                            "VALUES ($1, 1, $2, $3, $4, $5, $6, 'import', NOW()) RETURNING id",
+                            [=](const drogon::orm::Result &r) {
+                                if (r.empty()) {
+                                    ResponseUtils::sendError(*callbackPtr, "Failed to create version", k500InternalServerError);
+                                    return;
+                                }
+                                int versionId = r[0]["id"].as<int>();
+                                
+                                // 更新文档的 last_published_version_id
+                                db->execSqlAsync(
+                                        "UPDATE document SET last_published_version_id = $1::bigint, updated_at = NOW() "
+                                        "WHERE id = $2::bigint",
+                                        [=](const drogon::orm::Result &) {
+                                            Json::Value responseJson;
+                                            responseJson["id"] = docId;
+                                            responseJson["title"] = title;
+                                            responseJson["message"] = "Document imported successfully";
+                                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                                        },
+                                        [=](const drogon::orm::DrogonDbException &e) {
+                                            ResponseUtils::sendError(*callbackPtr,
+                                                                     "Database error: " + std::string(e.base().what()),
+                                                                     k500InternalServerError);
+                                        },
+                                        std::to_string(versionId), std::to_string(docId));
+                            },
+                            [=](const drogon::orm::DrogonDbException &e) {
+                                ResponseUtils::sendError(*callbackPtr,
+                                                         "Database error: " + std::string(e.base().what()),
+                                                         k500InternalServerError);
+                            },
+                            std::to_string(docId), placeholderUrl, placeholderSha256, std::to_string(contentSize), text,
+                            std::to_string(userId));
+                },
+                [=](const drogon::orm::DrogonDbException &e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                title, std::to_string(userId));
+    });
+}
+
+// Markdown 文档导入
+void DocumentController::importMarkdown(const HttpRequestPtr &req,
+                                        std::function<void(const HttpResponsePtr &)> &&callback) {
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "Unauthorized", k401Unauthorized);
+        return;
+    }
+    int userId = std::stoi(userIdStr);
+
+    auto jsonPtr = req->jsonObject();
+    if (!jsonPtr) {
+        ResponseUtils::sendError(callback, "Invalid JSON", k400BadRequest);
+        return;
+    }
+    Json::Value json = *jsonPtr;
+
+    if (!json.isMember("markdown")) {
+        ResponseUtils::sendError(callback, "markdown content is required", k400BadRequest);
+        return;
+    }
+
+    std::string markdown = json["markdown"].asString();
+    std::string title = json.get("title", "Imported Markdown").asString();
+
+    std::string converterUrl = getConverterServiceUrl();
+    auto client = drogon::HttpClient::newHttpClient(converterUrl);
+    auto converterReq = drogon::HttpRequest::newHttpRequest();
+    converterReq->setMethod(drogon::Post);
+    converterReq->setPath("/convert/markdown-to-html");
+    converterReq->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+
+    Json::Value converterPayload;
+    converterPayload["markdown"] = markdown;
+    Json::StreamWriterBuilder builder;
+    converterReq->setBody(Json::writeString(builder, converterPayload));
+
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+
+    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+        if (result != drogon::ReqResult::Ok) {
+            std::string errorMsg = "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
+            std::cerr << "Markdown import: Failed to connect to converter service. Result: " << static_cast<int>(result) << std::endl;
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+        if (resp->getStatusCode() != k200OK) {
+            std::string errorMsg = "Converter service returned error: " + std::to_string(resp->getStatusCode());
+            std::string responseBody;
+            if (resp->getBody().size() > 0) {
+                responseBody = std::string(resp->getBody().data(), resp->getBody().size());
+                errorMsg += " - " + responseBody.substr(0, 500);
+            }
+            std::cerr << "Markdown import: Converter service error. Status: " << resp->getStatusCode() 
+                      << ", Body: " << responseBody << std::endl;
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+
+        auto jsonPtr = resp->getJsonObject();
+        if (!jsonPtr) {
+            std::string errorMsg = "Invalid JSON response from converter service";
+            if (resp->getBody().size() > 0) {
+                errorMsg += ": " + std::string(resp->getBody().data(), std::min(resp->getBody().size(), size_t(200)));
+            }
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+        
+        if (jsonPtr->isMember("error")) {
+            std::string errorMsg = "Conversion failed: " + (*jsonPtr)["error"].asString();
+            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+            return;
+        }
+        
+        if (!jsonPtr->isMember("html")) {
+            ResponseUtils::sendError(*callbackPtr, "Invalid conversion response: missing 'html' field", k500InternalServerError);
+            return;
+        }
+
+        std::string html = (*jsonPtr)["html"].asString();
+
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "INSERT INTO document (title, owner_id, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) "
+                "RETURNING id",
+                [=](const drogon::orm::Result &r) {
+                    if (r.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Failed to create document", k500InternalServerError);
+                        return;
+                    }
+                    int docId = r[0]["id"].as<int>();
+
+                    // 为导入的文档创建版本，使用占位符值
+                    std::string placeholderUrl = "import://markdown/" + std::to_string(docId);
+                    std::string placeholderSha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+                    int64_t contentSize = static_cast<int64_t>(html.length());
+
+                    db->execSqlAsync(
+                            "INSERT INTO document_version (doc_id, version_number, snapshot_url, snapshot_sha256, "
+                            "size_bytes, content_html, created_by, source, created_at) "
+                            "VALUES ($1, 1, $2, $3, $4, $5, $6, 'import', NOW()) RETURNING id",
+                            [=](const drogon::orm::Result &r) {
+                                if (r.empty()) {
+                                    ResponseUtils::sendError(*callbackPtr, "Failed to create version", k500InternalServerError);
+                                    return;
+                                }
+                                int versionId = r[0]["id"].as<int>();
+                                
+                                // 更新文档的 last_published_version_id
+                                db->execSqlAsync(
+                                        "UPDATE document SET last_published_version_id = $1::bigint, updated_at = NOW() "
+                                        "WHERE id = $2::bigint",
+                                        [=](const drogon::orm::Result &) {
+                                            Json::Value responseJson;
+                                            responseJson["id"] = docId;
+                                            responseJson["title"] = title;
+                                            responseJson["message"] = "Document imported successfully";
+                                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                                        },
+                                        [=](const drogon::orm::DrogonDbException &e) {
+                                            ResponseUtils::sendError(*callbackPtr,
+                                                                     "Database error: " + std::string(e.base().what()),
+                                                                     k500InternalServerError);
+                                        },
+                                        std::to_string(versionId), std::to_string(docId));
+                            },
+                            [=](const drogon::orm::DrogonDbException &e) {
+                                ResponseUtils::sendError(*callbackPtr,
+                                                         "Database error: " + std::string(e.base().what()),
+                                                         k500InternalServerError);
+                            },
+                            std::to_string(docId), placeholderUrl, placeholderSha256, std::to_string(contentSize), html,
+                            std::to_string(userId));
+                },
+                [=](const drogon::orm::DrogonDbException &e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                title, std::to_string(userId));
+    });
+}
+
+// Word 文档导出
+void DocumentController::exportWord(const HttpRequestPtr &req,
+                                    std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    int docId = std::stoi(routingParams[0]);
+
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "Unauthorized", k401Unauthorized);
+        return;
+    }
+    int userId = std::stoi(userIdStr);
+
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
+            return;
+        }
+
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "SELECT d.title, dv.content_html, dv.content_text "
+                "FROM document d "
+                "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id "
+                "WHERE d.id = $1",
+                [=](const drogon::orm::Result &r) {
+                    if (r.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
+                        return;
+                    }
+
+                    std::string title = r[0]["title"].as<std::string>();
+                    std::string html = r[0]["content_html"].isNull() ? "" : r[0]["content_html"].as<std::string>();
+                    std::string text = r[0]["content_text"].isNull() ? "" : r[0]["content_text"].as<std::string>();
+                    std::string content = html.empty() ? text : html;
+
+                    std::string converterUrl = getConverterServiceUrl();
+                    auto client = drogon::HttpClient::newHttpClient(converterUrl);
+                    auto converterReq = drogon::HttpRequest::newHttpRequest();
+                    converterReq->setMethod(drogon::Post);
+                    converterReq->setPath("/convert/html-to-word");
+                    converterReq->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+
+                    Json::Value converterPayload;
+                    converterPayload["html"] = content;
+                    converterPayload["title"] = title;
+                    Json::StreamWriterBuilder builder;
+                    converterReq->setBody(Json::writeString(builder, converterPayload));
+
+                    client->sendRequest(
+                            converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+                                if (result != drogon::ReqResult::Ok) {
+                                    std::string errorMsg = "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
+                                    std::cerr << "Word export: Failed to connect to converter service. Result: " << static_cast<int>(result) << std::endl;
+                                    ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                                    return;
+                                }
+                                if (resp->getStatusCode() != k200OK) {
+                                    std::string errorMsg = "Converter service returned error: " + std::to_string(resp->getStatusCode());
+                                    std::string responseBody;
+                                    if (resp->getBody().size() > 0) {
+                                        responseBody = std::string(resp->getBody().data(), resp->getBody().size());
+                                        errorMsg += " - " + responseBody.substr(0, 500);
+                                    }
+                                    std::cerr << "Word export: Converter service error. Status: " << resp->getStatusCode() 
+                                              << ", Body: " << responseBody << std::endl;
+                                    ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                                    return;
+                                }
+
+                                auto jsonPtr = resp->getJsonObject();
+                                if (!jsonPtr) {
+                                    std::string errorMsg = "Invalid JSON response from converter service";
+                                    if (resp->getBody().size() > 0) {
+                                        errorMsg += ": " + std::string(resp->getBody().data(), std::min(resp->getBody().size(), size_t(200)));
+                                    }
+                                    ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                                    return;
+                                }
+                                
+                                if (jsonPtr->isMember("error")) {
+                                    std::string errorMsg = "Conversion failed: " + (*jsonPtr)["error"].asString();
+                                    ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                                    return;
+                                }
+                                
+                                if (!jsonPtr->isMember("data")) {
+                                    ResponseUtils::sendError(*callbackPtr, "Invalid conversion response: missing 'data' field",
+                                                             k500InternalServerError);
+                                    return;
+                                }
+
+                                std::string base64 = (*jsonPtr)["data"].asString();
+                                std::string filename = (*jsonPtr).get("filename", title + ".docx").asString();
+
+                                Json::Value responseJson;
+                                responseJson["data"] = base64;
+                                responseJson["filename"] = filename;
+                                responseJson["mime_type"] =
+                                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                                auto fileResp = HttpResponse::newHttpJsonResponse(responseJson);
+                                fileResp->setStatusCode(k200OK);
+                                (*callbackPtr)(fileResp);
+                            });
+                },
+                [=](const drogon::orm::DrogonDbException &e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                std::to_string(docId));
+    });
+}
+
+// PDF 文档导出
+void DocumentController::exportPdf(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    int docId = std::stoi(routingParams[0]);
+
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "Unauthorized", k401Unauthorized);
+        return;
+    }
+    int userId = std::stoi(userIdStr);
+
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
+            return;
+        }
+
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "SELECT d.title, dv.content_text, dv.content_html "
+                "FROM document d "
+                "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id "
+                "WHERE d.id = $1",
+                [=](const drogon::orm::Result &r) {
+                    if (r.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
+                        return;
+                    }
+
+                    std::string title = r[0]["title"].as<std::string>();
+                    std::string text = r[0]["content_text"].isNull() ? "" : r[0]["content_text"].as<std::string>();
+                    std::string html = r[0]["content_html"].isNull() ? "" : r[0]["content_html"].as<std::string>();
+                    
+                    // 优先使用 content_text，如果为空则从 HTML 中提取纯文本
+                    std::string content = text;
+                    if (content.empty() && !html.empty()) {
+                        // 简单移除HTML标签提取纯文本
+                        std::string plainText = html;
+                        size_t pos = 0;
+                        while ((pos = plainText.find('<')) != std::string::npos) {
+                            size_t end = plainText.find('>', pos);
+                            if (end != std::string::npos) {
+                                plainText.erase(pos, end - pos + 1);
+                            } else {
+                                break;
+                            }
+                        }
+                        // 清理多余的空白字符
+                        while ((pos = plainText.find("  ")) != std::string::npos) {
+                            plainText.replace(pos, 2, " ");
+                        }
+                        while ((pos = plainText.find("\n\n\n")) != std::string::npos) {
+                            plainText.replace(pos, 3, "\n\n");
+                        }
+                        content = plainText;
+                    }
+                    
+                    if (content.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Document content is empty", k400BadRequest);
+                        return;
+                    }
+
+                    std::string converterUrl = getConverterServiceUrl();
+                    auto client = drogon::HttpClient::newHttpClient(converterUrl);
+                    auto converterReq = drogon::HttpRequest::newHttpRequest();
+                    converterReq->setMethod(drogon::Post);
+                    converterReq->setPath("/convert/text-to-pdf");
+                    converterReq->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+
+                    Json::Value converterPayload;
+                    converterPayload["text"] = content;
+                    converterPayload["title"] = title;
+                    Json::StreamWriterBuilder builder;
+                    converterReq->setBody(Json::writeString(builder, converterPayload));
+
+                    client->sendRequest(converterReq, [=](drogon::ReqResult result,
+                                                          const drogon::HttpResponsePtr &resp) {
+                        if (result != drogon::ReqResult::Ok) {
+                            std::string errorMsg = "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
+                            std::cerr << "PDF export: Failed to connect to converter service. Result: " << static_cast<int>(result) << std::endl;
+                            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                            return;
+                        }
+                        if (resp->getStatusCode() != k200OK) {
+                            std::string errorMsg = "Converter service returned error: " + std::to_string(resp->getStatusCode());
+                            std::string responseBody;
+                            if (resp->getBody().size() > 0) {
+                                responseBody = std::string(resp->getBody().data(), resp->getBody().size());
+                                errorMsg += " - " + responseBody.substr(0, 500);
+                            }
+                            std::cerr << "PDF export: Converter service error. Status: " << resp->getStatusCode() 
+                                      << ", Body: " << responseBody << std::endl;
+                            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                            return;
+                        }
+
+                        auto jsonPtr = resp->getJsonObject();
+                        if (!jsonPtr) {
+                            std::string errorMsg = "Invalid JSON response from converter service";
+                            if (resp->getBody().size() > 0) {
+                                errorMsg += ": " + std::string(resp->getBody().data(), std::min(resp->getBody().size(), size_t(200)));
+                            }
+                            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                            return;
+                        }
+                        
+                        if (jsonPtr->isMember("error")) {
+                            std::string errorMsg = "Conversion failed: " + (*jsonPtr)["error"].asString();
+                            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                            return;
+                        }
+                        
+                        if (!jsonPtr->isMember("data")) {
+                            ResponseUtils::sendError(*callbackPtr, "Invalid conversion response: missing 'data' field",
+                                                     k500InternalServerError);
+                            return;
+                        }
+
+                        std::string base64 = (*jsonPtr)["data"].asString();
+                        std::string filename = (*jsonPtr).get("filename", title + ".pdf").asString();
+
+                        Json::Value responseJson;
+                        responseJson["data"] = base64;
+                        responseJson["filename"] = filename;
+                        responseJson["mime_type"] = "application/pdf";
+                        auto fileResp = HttpResponse::newHttpJsonResponse(responseJson);
+                        fileResp->setStatusCode(k200OK);
+                        (*callbackPtr)(fileResp);
+                    });
+                },
+                [=](const drogon::orm::DrogonDbException &e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                std::to_string(docId));
+    });
+}
+
+// Markdown 文档导出
+void DocumentController::exportMarkdown(const HttpRequestPtr &req,
+                                        std::function<void(const HttpResponsePtr &)> &&callback) {
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    int docId = std::stoi(routingParams[0]);
+
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "Unauthorized", k401Unauthorized);
+        return;
+    }
+    int userId = std::stoi(userIdStr);
+
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
+        if (!hasPermission) {
+            ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
+            return;
+        }
+
+        auto db = drogon::app().getDbClient();
+        if (!db) {
+            ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
+            return;
+        }
+
+        db->execSqlAsync(
+                "SELECT d.title, dv.content_html, dv.content_text "
+                "FROM document d "
+                "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id "
+                "WHERE d.id = $1",
+                [=](const drogon::orm::Result &r) {
+                    if (r.empty()) {
+                        ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
+                        return;
+                    }
+
+                    std::string title = r[0]["title"].as<std::string>();
+                    std::string html = r[0]["content_html"].isNull() ? "" : r[0]["content_html"].as<std::string>();
+                    std::string text = r[0]["content_text"].isNull() ? "" : r[0]["content_text"].as<std::string>();
+                    std::string content = html.empty() ? text : html;
+
+                    std::string converterUrl = getConverterServiceUrl();
+                    auto client = drogon::HttpClient::newHttpClient(converterUrl);
+                    auto converterReq = drogon::HttpRequest::newHttpRequest();
+                    converterReq->setMethod(drogon::Post);
+                    converterReq->setPath("/convert/html-to-markdown");
+                    converterReq->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+
+                    Json::Value converterPayload;
+                    converterPayload["html"] = content;
+                    Json::StreamWriterBuilder builder;
+                    converterReq->setBody(Json::writeString(builder, converterPayload));
+
+                    client->sendRequest(converterReq,
+                                        [=](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+                                            if (result != drogon::ReqResult::Ok) {
+                                                std::string errorMsg = "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
+                                                std::cerr << "Markdown export: Failed to connect to converter service. Result: " << static_cast<int>(result) << std::endl;
+                                                ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                                                return;
+                                            }
+                                            if (resp->getStatusCode() != k200OK) {
+                                                std::string errorMsg = "Converter service returned error: " + std::to_string(resp->getStatusCode());
+                                                std::string responseBody;
+                                                if (resp->getBody().size() > 0) {
+                                                    responseBody = std::string(resp->getBody().data(), resp->getBody().size());
+                                                    errorMsg += " - " + responseBody.substr(0, 500);
+                                                }
+                                                std::cerr << "Markdown export: Converter service error. Status: " << resp->getStatusCode() 
+                                                          << ", Body: " << responseBody << std::endl;
+                                                ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                                                return;
+                                            }
+
+                                            auto jsonPtr = resp->getJsonObject();
+                                            if (!jsonPtr) {
+                                                std::string errorMsg = "Invalid JSON response from converter service";
+                                                if (resp->getBody().size() > 0) {
+                                                    errorMsg += ": " + std::string(resp->getBody().data(), std::min(resp->getBody().size(), size_t(200)));
+                                                }
+                                                ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                                                return;
+                                            }
+                                            
+                                            if (jsonPtr->isMember("error")) {
+                                                std::string errorMsg = "Conversion failed: " + (*jsonPtr)["error"].asString();
+                                                ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
+                                                return;
+                                            }
+                                            
+                                            if (!jsonPtr->isMember("markdown")) {
+                                                ResponseUtils::sendError(*callbackPtr, "Invalid conversion response: missing 'markdown' field",
+                                                                         k500InternalServerError);
+                                                return;
+                                            }
+
+                                            std::string markdown = (*jsonPtr)["markdown"].asString();
+                                            std::string filename = title + ".md";
+
+                                            Json::Value responseJson;
+                                            responseJson["markdown"] = markdown;
+                                            responseJson["filename"] = filename;
+                                            responseJson["mime_type"] = "text/markdown";
+                                            auto fileResp = HttpResponse::newHttpJsonResponse(responseJson);
+                                            fileResp->setStatusCode(k200OK);
+                                            (*callbackPtr)(fileResp);
+                                        });
+                },
+                [=](const drogon::orm::DrogonDbException &e) {
+                    ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
+                                             k500InternalServerError);
+                },
+                std::to_string(docId));
     });
 }

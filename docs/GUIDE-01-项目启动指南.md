@@ -18,6 +18,10 @@
 5. **Meilisearch** - 全文搜索服务（端口 7700）
 6. **MinIO** - 对象存储服务（端口 9000/9001）
 
+### 第四阶段服务（可选，导入导出功能需要）
+
+7. **文档转换服务** - doc-converter-service（端口 3002）
+
 ---
 
 ## 🚀 启动步骤
@@ -127,11 +131,38 @@ npx tsx server.ts
 # 服务运行在 ws://localhost:1234
 ```
 
+#### 5. 启动文档转换服务（第四阶段，导入导出功能需要）
+
+**新开一个终端窗口**
+
+```bash
+cd doc-converter-service
+
+# 安装依赖（首次运行）
+npm install
+
+# 启动服务
+npm start
+
+# 服务运行在 http://localhost:3002
+# 健康检查: http://localhost:3002/health
+```
+
+**注意：** 确保 `cpp-service/config.json` 中配置了 `doc_converter_url`：
+```json
+{
+  "app": {
+    "doc_converter_url": "http://localhost:3002"
+  }
+}
+```
+
 **启动顺序总结：**
 1. ✅ Docker Compose 服务（PostgreSQL、Meilisearch、MinIO）
 2. ✅ C++ 后端服务
 3. ✅ 前端服务
 4. ✅ 协作服务
+5. ✅ 文档转换服务（可选，导入导出功能需要）
 
 ---
 
@@ -242,6 +273,12 @@ docker-compose ps
   ```
   应该返回 WebSocket 升级错误（这是正常的，说明服务在运行）
 
+- ✅ **文档转换服务**（可选，导入导出功能需要）:
+  ```bash
+  curl http://localhost:3002/health
+  ```
+  应该返回: `{"status":"ok","service":"doc-converter-service"}`
+
 ---
 
 ## 🛑 停止服务
@@ -278,6 +315,7 @@ docker-compose down -v
 # 停止所有 Node.js 进程
 pkill -f "tsx server.ts"
 pkill -f "vite"
+pkill -f "node.*doc-converter-service"  # 文档转换服务
 
 # 停止 C++ 后端
 pkill -f "cpp-service"
@@ -296,6 +334,8 @@ docker-compose down
 # 检查端口占用
 sudo lsof -i :8080  # C++ 后端
 sudo lsof -i :5173  # 前端
+sudo lsof -i :1234  # 协作服务
+sudo lsof -i :3002  # 文档转换服务
 sudo lsof -i :1234  # 协作服务
 sudo lsof -i :5432  # PostgreSQL
 sudo lsof -i :7700  # Meilisearch

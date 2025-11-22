@@ -7,9 +7,10 @@
 
 当前仓库涵盖：
 
-- `cpp-service`：Drogon + PostgreSQL 的主业务 API（文档、权限、评论、任务、通知、搜索、实时通讯等）
+- `cpp-service`：Drogon + PostgreSQL 的主业务 API（文档、权限、评论、任务、通知、搜索、实时通讯、导入导出等）
 - `collab-service`：Yjs WebSocket 网关，负责实时协作与聊天室数据通道
-- `frontend`：Tiptap 编辑器 + React 前端，集成协作、通知、任务与聊天面板
+- `doc-converter-service`：Node.js 文档转换服务，提供 Word/PDF/Markdown 格式转换
+- `frontend`：Tiptap 编辑器 + React 前端，集成协作、通知、任务、聊天面板与导入导出功能
 - `docs`：逐阶段的设计 / 验收指南（第四阶段聚焦实时通讯、通知增强、导入导出与用户管理）
 
 ### 核心功能&进度
@@ -20,7 +21,9 @@
 - ✅ **评论 / 任务 / 通知**：后端接口 + 前端侧边栏/看板/通知中心
 - ✅ **全文搜索**：Meilisearch 索引同步 + 搜索页
 - ✅ **实时通讯**：ChatController、聊天室/消息 API、WebSocket 聊天组件
-- 🔄 **阶段 4 增强**：通知过滤与偏好、文档导入导出、版本时间线/差异、管理员用户管理与运营分析
+- ✅ **用户搜索**：支持按ID、邮箱、昵称搜索用户，用于 ACL 权限管理
+- ✅ **文档导入导出**：Word/PDF/Markdown 格式导入导出，独立转换服务
+- 🔄 **阶段 4 增强**：通知过滤与偏好、版本时间线/差异、管理员用户管理与运营分析
 
 ## 🛠️ 技术栈
 
@@ -52,6 +55,9 @@ MultiuserDocument/
 ├── collab-service/        # y-websocket 网关 (Node.js + TypeScript)
 │   ├── server.ts
 │   └── tsconfig.json
+├── doc-converter-service/ # 文档转换服务 (Node.js)
+│   ├── index.js          # 转换服务主文件
+│   └── package.json       # 依赖配置
 ├── frontend/              # React + Tiptap 前端
 │   ├── src/components/DocumentEditor.tsx
 │   ├── src/api/client.ts  # 与 cpp-service 协作
@@ -168,7 +174,17 @@ npm run dev   # 或 npx tsx server.ts
 
 > 默认监听 `ws://localhost:1234`，可通过 `server.ts`/容器参数修改；前端通过 `VITE_WS_URL` 读取。
 
-### 6. 启动支撑服务（Meilisearch & MinIO）
+### 6. 启动文档转换服务
+
+```bash
+cd doc-converter-service
+npm install
+npm start   # 默认运行在 http://localhost:3002
+```
+
+> 文档转换服务提供 Word/PDF/Markdown 格式转换功能，用于文档导入导出。
+
+### 7. 启动支撑服务（Meilisearch & MinIO）
 
 ```bash
 # 在项目根目录
@@ -178,7 +194,7 @@ docker compose up -d meilisearch minio
 - Meilisearch 控制台：`http://localhost:7700`（Master Key 见 `cpp-service/config.json`）
 - MinIO 控制台：`http://localhost:9001`（默认 `minioadmin:minioadmin`）
 
-### 7. 启动前端
+### 8. 启动前端
 
 ```bash
 cd frontend
@@ -195,7 +211,39 @@ VITE_WS_URL=ws://localhost:1234
 
 至此即可在浏览器中完成「鉴权 → 文档 → 协作编辑」的闭环测试。
 
-## 📡 API 端点
+## 📡 主要 API 端点
+
+### 用户相关
+- `GET /api/users/me` - 获取当前用户信息
+- `PATCH /api/users/me` - 更新用户资料
+- `GET /api/users/search` - 搜索用户（按ID、邮箱、昵称）
+
+### 认证相关
+- `POST /api/auth/register` - 用户注册
+- `POST /api/auth/login` - 用户登录
+- `POST /api/auth/refresh` - 刷新 Token
+
+### 文档相关
+- `GET /api/docs` - 文档列表
+- `POST /api/docs` - 创建文档
+- `GET /api/docs/{id}` - 文档详情
+- `PATCH /api/docs/{id}` - 更新文档
+- `DELETE /api/docs/{id}` - 删除文档
+- `GET /api/docs/{id}/acl` - 获取 ACL 列表
+- `PUT /api/docs/{id}/acl` - 更新 ACL
+- `POST /api/documents/import/word` - 导入 Word 文档
+- `POST /api/documents/import/pdf` - 导入 PDF 文档
+- `POST /api/documents/import/markdown` - 导入 Markdown 文档
+- `GET /api/documents/{id}/export/word` - 导出为 Word
+- `GET /api/documents/{id}/export/pdf` - 导出为 PDF
+- `GET /api/documents/{id}/export/markdown` - 导出为 Markdown
+
+### 其他
+- `GET /api/search` - 全文搜索
+- `GET /api/notifications` - 通知列表
+- `GET /api/chat/rooms` - 聊天室列表
+
+详细 API 文档请参考：[API 设计文档](./docs/API-01-API设计.md)
 
 ### 健康检查
 
@@ -339,6 +387,7 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 - **webhook_token**：快照回调所需的 `X-Webhook-Token`
 - **meilisearch_url / meilisearch_master_key**：全文搜索服务地址与密钥
 - **minio_* 系列**：快照/附件默认落地到 MinIO，对应 endpoint / access_key / secret_key / bucket
+- **doc_converter_url**：文档转换服务地址，默认 `http://localhost:3002`
 
 ## 🔒 安全特性
 
@@ -349,16 +398,27 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 ## 📚 文档
 
+### 核心文档
 - **[总体设计文档](./docs/ARCH-01-总体设计.md)** - 系统架构、模块划分、开发路线图
 - **[详细设计文档](./docs/ARCH-02-详细设计.md)** - 数据库设计、API 规格、代码结构、部署指南
 - **[需求文档](./docs/REQ-01-需求文档.md)** - 项目需求文档
 - **[API 设计文档](./docs/API-01-API设计.md)** - API 设计文档
+- **[功能清单](./docs/PROJECT-功能清单.md)** - 项目功能清单
+
+### 开发指南
 - **[第一阶段开发指南](./docs/PHASE-01-用户认证开发指南.md)** - 用户认证与基础功能 ✅
 - **[第二阶段开发指南](./docs/PHASE-02-文档管理开发指南.md)** - 文档 CRUD、权限管理与版本控制 ✅
 - **[第三阶段开发指南](./docs/PHASE-03-协作功能开发指南.md)** - 实时协作、评论、任务、通知、搜索 ✅
 - **[第四阶段开发指南](./docs/PHASE-04-功能完善开发指南.md)** - 实时通讯、通知增强、导入导出、版本与用户管理
+
+### 功能说明
+- **[用户搜索功能](./docs/FEATURE-用户搜索功能.md)** - 用户搜索功能详细说明
+- **[文档导入导出功能](./docs/GUIDE-03-文档导入导出功能说明.md)** - 文档导入导出功能详细说明 ✅
+
+### 操作指南
 - **[项目启动指南](./docs/GUIDE-01-项目启动指南.md)** - 项目启动和运行指南
 - **[后端 API 测试方法](./docs/GUIDE-02-后端API测试方法.md)** - API 测试方法
+- **[版本控制功能测试指南](./docs/DEV-12-版本控制功能测试指南.md)** - 版本控制功能测试
 
 ## 🐛 常见问题
 
@@ -412,9 +472,9 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 ### 📅 第四阶段（当前开发）
 
 - [x] ACL 巩固 & 前端联调（`GET/PUT /api/docs/{id}/acl`、`AclManager`）
+- [x] 用户搜索功能（`GET /api/users/search`、ACL 管理集成）
 - [x] 文档实时通讯（ChatController、WebSocket、未读同步）
-- [ ] 通知系统增强（过滤参数、`notification_setting`、WS 推送）
-- [ ] 文档导入导出（Word / PDF / Markdown）
+- [x] 文档导入导出功能（Word/PDF/Markdown，doc-converter-service，前后端完整实现）✅
 - [ ] 文档版本控制增强（手动版本、diff、恢复体验）
 - [ ] 用户管理与运营（管理员用户列表、角色调整、行为分析、满意度调查）
 

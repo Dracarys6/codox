@@ -8,12 +8,13 @@
 
 ---
 
-## ✅ 当前进度快照（2025-11-19）
+## ✅ 当前进度快照（2025-01-19）
 
 - ACL 查询 / 更新接口已在 `DocumentController` 上线，前端 `AclManager` 已打通（仍需补充自动化测试）。
 - 实时通讯（聊天室、消息 CRUD、WebSocket 推送、前端聊天面板）已完成第一版交付，可在文档编辑页使用。
 - HealthController 已扩展数据库 / Meilisearch / MinIO 健康探测，协作快照上传与 MinIO SigV4 流程在后端/前端闭环。
-- 通知过滤 / 偏好、导入导出、版本时间线、用户管理与运营仍在排期中。
+- **文档导入导出功能已完成**：Word/PDF/Markdown 导入导出，独立转换服务，完整的前后端实现。
+- 通知过滤 / 偏好、版本时间线、用户管理与运营仍在排期中。
 
 ---
 
@@ -87,27 +88,33 @@
   - [x] 前端：WebSocket 客户端连接
   - [x] 前端：实时通知接收与展示
 
-### 3. 文档导入导出（优先级：高 ⭐⭐）
+### 3. 文档导入导出（优先级：高 ⭐⭐）✅
 
-- [ ] **Word 文档导入导出**
-  - [ ] 后端：集成 docx 解析库（如 `mammoth` 或 C++ 库）
-  - [ ] 后端：实现 Word 导入接口 (`POST /api/documents/import/word`)
-  - [ ] 后端：实现 Word 导出接口 (`GET /api/documents/:id/export/word`)
-  - [ ] 前端：上传 Word 文件导入
-  - [ ] 前端：导出为 Word 文件
+- [x] **Word 文档导入导出**
+  - [x] 后端：创建 doc-converter-service（Node.js 服务，使用 `mammoth` 和 `docx`）
+  - [x] 后端：实现 Word 导入接口 (`POST /api/documents/import/word`)
+  - [x] 后端：实现 Word 导出接口 (`GET /api/documents/{id}/export/word`)
+  - [x] 前端：上传 Word 文件导入（ImportModal 组件）
+  - [x] 前端：导出为 Word 文件（ExportMenu 组件）
 
-- [ ] **PDF 文档导入导出**
-  - [ ] 后端：集成 PDF 解析库（如 `pdf-lib` 或 C++ 库）
-  - [ ] 后端：实现 PDF 导入接口 (`POST /api/documents/import/pdf`)
-  - [ ] 后端：实现 PDF 导出接口 (`GET /api/documents/:id/export/pdf`)
-  - [ ] 前端：上传 PDF 文件导入
-  - [ ] 前端：导出为 PDF 文件
+- [x] **PDF 文档导入导出**
+  - [x] 后端：集成 PDF 解析库（`pdf-parse` 和 `pdf-lib`）
+  - [x] 后端：实现 PDF 导入接口 (`POST /api/documents/import/pdf`)
+  - [x] 后端：实现 PDF 导出接口 (`GET /api/documents/{id}/export/pdf`)
+  - [x] 前端：上传 PDF 文件导入
+  - [x] 前端：导出为 PDF 文件
 
-- [ ] **Markdown 导入导出**
-  - [ ] 后端：实现 Markdown 导入接口 (`POST /api/documents/import/markdown`)
-  - [ ] 后端：实现 Markdown 导出接口 (`GET /api/documents/:id/export/markdown`)
-  - [ ] 前端：上传 Markdown 文件导入
-  - [ ] 前端：导出为 Markdown 文件
+- [x] **Markdown 导入导出**
+  - [x] 后端：实现 Markdown 导入接口 (`POST /api/documents/import/markdown`)
+  - [x] 后端：实现 Markdown 导出接口 (`GET /api/documents/{id}/export/markdown`)
+  - [x] 前端：Markdown 文本输入导入
+  - [x] 前端：导出为 Markdown 文件
+
+> 状态：✅ 已完成（2025-01-19）
+> - doc-converter-service 运行在端口 3002
+> - 所有导入导出接口已实现并集成到前端
+> - 支持文件大小限制（50MB）和权限验证
+> - 详细文档：[文档导入导出功能说明](./GUIDE-03-文档导入导出功能说明.md)
 
 ### 4. 文档版本控制（优先级：高 ⭐⭐）
 
@@ -968,11 +975,11 @@ CREATE TABLE notification_setting (
 
 ### 优先级建议
 
-0. **文档权限管理**: ACL接口实现,优先级最高
-1. **实时通讯模块**：核心协作功能，提升团队沟通效率，优先级最高
-2. **通知系统增强**：完善现有通知功能，提升用户体验，优先级高
-3. **文档导入导出**：提升用户体验，优先级高
-4. **文档版本控制**：保障文档可追溯与合规审计，优先级高
+0. **文档权限管理**: ACL接口实现,优先级最高 ✅
+1. **实时通讯模块**：核心协作功能，提升团队沟通效率，优先级最高 ✅
+2. **文档导入导出**：提升用户体验，优先级高 ✅（已完成 2025-01-19）
+3. **通知系统增强**：完善现有通知功能，提升用户体验，优先级高
+4. **文档版本控制**：保障文档可追溯与合规审计，优先级高（基础功能已完成，UI增强待完成）
 5. **用户管理**：支撑企业级治理与安全策略，优先级高
 6. **运维与多端支持**：健康监控、日志告警与 PWA 体验，优先级中
 
