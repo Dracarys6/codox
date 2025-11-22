@@ -41,13 +41,13 @@ export function VersionTimeline({ docId, onVersionSelect, onRestore, showFilters
     };
 
     const handleRestore = async (version: DocumentVersion) => {
-        if (!window.confirm(`确定要恢复到版本 ${version.version_number} 吗？这将创建一个新的版本记录。`)) {
+        if (!window.confirm(`确定要恢复到版本 ${version.version_number} 吗？这将创建一个新的版本记录并更新文档内容。`)) {
             return;
         }
 
         try {
             await apiClient.restoreVersion(docId, version.id);
-            alert('版本恢复成功！');
+            alert('版本恢复成功！文档内容已更新。');
             onRestore?.(version);
             loadVersions(); // 重新加载列表
         } catch (err: any) {

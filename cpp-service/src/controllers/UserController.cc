@@ -1,6 +1,7 @@
 #include "UserController.h"
 
 #include <drogon/drogon.h>
+#include <drogon/utils/Utilities.h>  // 用于 urlDecode
 
 #include "../utils/ResponseUtils.h"
 
@@ -164,6 +165,26 @@ void UserController::updateMe(const HttpRequestPtr& req, std::function<void(cons
 void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.获取搜索关键词
     std::string query = req->getParameter("q");
+
+    // 如果 getParameter 获取不到，尝试从 query string 手动解析
+    if (query.empty()) {
+        std::string queryString = req->query();
+        if (!queryString.empty()) {
+            // 解析查询字符串，查找 q= 参数
+            size_t pos = queryString.find("q=");
+            if (pos != std::string::npos) {
+                size_t start = pos + 2;
+                size_t end = queryString.find("&", start);
+                if (end == std::string::npos) {
+                    end = queryString.length();
+                }
+                query = queryString.substr(start, end - start);
+                // URL 解码（Drogon 的 getParameter 会自动解码，但手动解析的需要手动解码）
+                query = drogon::utils::urlDecode(query);
+            }
+        }
+    }
+
     if (query.empty()) {
         ResponseUtils::sendError(callback, "Query parameter 'q' is required", drogon::k400BadRequest);
         return;
@@ -173,16 +194,48 @@ void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(c
     int page = 1;
     int pageSize = 20;
 
+    // 获取 page 参数
+    std::string pageStr = req->getParameter("page");
+    if (pageStr.empty()) {
+        // 尝试从查询字符串手动解析
+        std::string queryString = req->query();
+        if (!queryString.empty()) {
+            size_t pos = queryString.find("page=");
+            if (pos != std::string::npos) {
+                size_t start = pos + 5;
+                size_t end = queryString.find("&", start);
+                if (end == std::string::npos) {
+                    end = queryString.length();
+                }
+                pageStr = queryString.substr(start, end - start);
+            }
+        }
+    }
     try {
-        std::string pageStr = req->getParameter("page");
         if (!pageStr.empty()) {
             page = std::max(1, std::stoi(pageStr));
         }
     } catch (...) {
     }
 
+    // 获取 page_size 参数
+    std::string pageSizeStr = req->getParameter("page_size");
+    if (pageSizeStr.empty()) {
+        // 尝试从查询字符串手动解析
+        std::string queryString = req->query();
+        if (!queryString.empty()) {
+            size_t pos = queryString.find("page_size=");
+            if (pos != std::string::npos) {
+                size_t start = pos + 10;
+                size_t end = queryString.find("&", start);
+                if (end == std::string::npos) {
+                    end = queryString.length();
+                }
+                pageSizeStr = queryString.substr(start, end - start);
+            }
+        }
+    }
     try {
-        std::string pageSizeStr = req->getParameter("page_size");
         if (!pageSizeStr.empty()) {
             pageSize = std::max(1, std::min(100, std::stoi(pageSizeStr)));
         }
@@ -229,6 +282,9 @@ void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(c
                 "WHERE u.email ILIKE $1 OR COALESCE(p.nickname, '') ILIKE $1";
     }
 
+    // 创建 callback 的 shared_ptr 以便在 lambda 中使用
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
+
     auto countCallback = [=](const drogon::orm::Result& countResult) mutable {
         int total = 0;
         if (!countResult.empty()) {
@@ -244,7 +300,7 @@ void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(c
                     "LEFT JOIN user_profile p ON u.id = p.user_id "
                     "WHERE u.id = $1::integer OR u.email ILIKE $2 OR COALESCE(p.nickname, '') ILIKE $2 "
                     "ORDER BY u.id "
-                    "LIMIT $3 OFFSET $4";
+                    "LIMIT $3::integer OFFSET $4::integer";
         } else {
             listQuery =
                     "SELECT u.id, u.email, u.role, p.nickname, p.avatar_url, p.bio "
@@ -252,7 +308,7 @@ void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(c
                     "LEFT JOIN user_profile p ON u.id = p.user_id "
                     "WHERE u.email ILIKE $1 OR COALESCE(p.nickname, '') ILIKE $1 "
                     "ORDER BY u.id "
-                    "LIMIT $2 OFFSET $3";
+                    "LIMIT $2::integer OFFSET $3::integer";
         }
 
         auto listCallback = [=](const drogon::orm::Result& r) mutable {
@@ -279,12 +335,12 @@ void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(c
             responseJson["page"] = page;
             responseJson["page_size"] = pageSize;
 
-            ResponseUtils::sendSuccess(callback, responseJson);
+            ResponseUtils::sendSuccess(*callbackPtr, responseJson);
         };
 
         auto listErrorCallback = [=](const drogon::orm::DrogonDbException& e) mutable {
             LOG_ERROR << "Database error in searchUsers: " << e.base().what();
-            ResponseUtils::sendError(callback, "Database error: " + std::string(e.base().what()),
+            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                      drogon::k500InternalServerError);
         };
 
@@ -297,7 +353,7 @@ void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(c
 
     auto countErrorCallback = [=](const drogon::orm::DrogonDbException& e) mutable {
         LOG_ERROR << "Database error in searchUsers (count): " << e.base().what();
-        ResponseUtils::sendError(callback, "Database error: " + std::string(e.base().what()),
+        ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                  drogon::k500InternalServerError);
     };
 

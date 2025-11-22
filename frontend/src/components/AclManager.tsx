@@ -47,7 +47,6 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
     const [success, setSuccess] = useState<string | null>(null);
     const [newUserId, setNewUserId] = useState('');
     const [newPermission, setNewPermission] = useState<'editor' | 'viewer'>('editor');
-    const [searchTerm, setSearchTerm] = useState('');
     const [forbidden, setForbidden] = useState(false);
     const [userSearchQuery, setUserSearchQuery] = useState('');
     const [userSearchResults, setUserSearchResults] = useState<User[]>([]);
@@ -103,20 +102,6 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
         }
     };
 
-    // 过滤权限列表
-    const filteredAcl = useMemo(() => {
-        if (!acl) return [];
-        const trimmed = searchTerm.trim();
-        if (!trimmed) return acl.acl;
-        const term = trimmed.toLowerCase();
-        return acl.acl.filter((entry) => {
-            const email = entry.email?.toLowerCase() || '';
-            const nickname = entry.nickname?.toLowerCase() || '';
-            const userId = entry.user_id.toString();
-            // 对于用户ID，直接使用原始搜索词进行匹配（不区分大小写）
-            return email.includes(term) || nickname.includes(term) || userId.includes(trimmed);
-        });
-    }, [acl, searchTerm]);
 
     // 统计信息
     const stats = useMemo(() => {
@@ -141,13 +126,9 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
 
             setUserSearchLoading(true);
             try {
-                console.log('Searching users with query:', userSearchQuery.trim());
                 const result = await apiClient.searchUsers(userSearchQuery.trim(), { page: 1, page_size: 10 });
-                console.log('Search results:', result);
                 setUserSearchResults(result.users || []);
             } catch (err: any) {
-                console.error('Failed to search users:', err);
-                console.error('Error details:', err.response?.data || err.message);
                 setUserSearchResults([]);
                 // 显示错误提示
                 if (err.response?.status !== 401) {
@@ -195,8 +176,29 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
                 return;
             }
 
+            // 获取当前用户ID（owner）
+            const currentUserStr = localStorage.getItem('user');
+            let currentUserId: number | null = null;
+            if (currentUserStr) {
+                try {
+                    const currentUser = JSON.parse(currentUserStr);
+                    currentUserId = currentUser.id;
+                } catch (e) {
+                    // 忽略解析错误
+                }
+            }
+
+            // 检查是否尝试添加自己（owner）
+            if (currentUserId && userId === currentUserId) {
+                setError('不能添加自己为协作者');
+                setSaving(false);
+                return;
+            }
+
+            // 构建新的 ACL 列表：排除 owner 条目，只包含非 owner 的条目
+            const nonOwnerAcl = currentAcl.filter((entry) => entry.permission !== 'owner');
             const updatedAcl: UpdateAclRequest = {
-                acl: [...currentAcl, { user_id: userId, permission: newPermission }],
+                acl: [...nonOwnerAcl, { user_id: userId, permission: newPermission }],
             };
 
             await apiClient.updateDocumentAcl(docId, updatedAcl);
@@ -349,28 +351,6 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
                 </div>
             )}
 
-            {/* 搜索框 */}
-            {acl && acl.acl.length > 0 && (
-                <div className="relative">
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="搜索用户（ID、邮箱、昵称）..."
-                        className="w-full px-4 py-2.5 pl-10 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-200 focus:border-blue-500 bg-white transition-all duration-200 text-sm placeholder:text-gray-400"
-                    />
-                    <i className="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                    {searchTerm && (
-                        <button
-                            onClick={() => setSearchTerm('')}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        >
-                            <i className="fa fa-times"></i>
-                        </button>
-                    )}
-                </div>
-            )}
-
             {/* 添加新权限 */}
             {ownerEntry && (
                 <div className="p-5 bg-white rounded-2xl border-2 border-gray-100 shadow-sm">
@@ -400,7 +380,7 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
                         <div className="flex-1 relative user-search-container">
                             <input
                                 type="text"
-                                value={userSearchQuery || newUserId}
+                                value={newUserId || userSearchQuery}
                                 onChange={(e) => {
                                     const value = e.target.value;
                                     setUserSearchQuery(value);
@@ -530,9 +510,9 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
             )}
 
             {/* 权限列表 */}
-            {acl && filteredAcl.length > 0 ? (
+            {acl && acl.acl.length > 0 ? (
                 <div className="space-y-3">
-                    {filteredAcl.map((entry, idx) => {
+                    {acl.acl.map((entry, idx) => {
                         const info = PERMISSION_INFO[entry.permission];
                         const displayName = getDisplayName(entry);
                         const initials = getInitials(entry);
@@ -608,17 +588,6 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
                         );
                     })}
                         </div>
-            ) : acl && acl.acl.length > 0 && searchTerm ? (
-                <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-gray-200">
-                    <i className="fa fa-search text-4xl text-gray-300 mb-3"></i>
-                    <p className="text-gray-500 font-medium text-sm">未找到匹配的用户</p>
-                    <button
-                        onClick={() => setSearchTerm('')}
-                        className="mt-2 text-xs text-primary hover:text-primary/80"
-                    >
-                        清除搜索
-                    </button>
-                </div>
             ) : (
                 <div className="text-center py-12 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-gray-200">
                     <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">

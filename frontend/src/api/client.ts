@@ -39,12 +39,25 @@ import {
 // 生产环境：使用环境变量配置的完整 URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+// 确保在开发环境中使用相对路径，避免 CORS 问题
+const getApiBaseUrl = () => {
+    const envUrl = import.meta.env.VITE_API_BASE_URL;
+    // 如果是开发环境且设置了完整 URL，警告并强制使用相对路径
+    if (import.meta.env.DEV && envUrl && (envUrl.startsWith('http://') || envUrl.startsWith('https://'))) {
+        console.warn('[API] 开发环境检测到完整 URL，将使用相对路径以避免 CORS 问题:', envUrl);
+        console.warn('[API] 请使用 Vite 代理，确保 vite.config.ts 中配置了 /api 代理');
+        return '/api';
+    }
+    return envUrl || '/api';
+};
+
 class ApiClient {
     private client: AxiosInstance;
 
     constructor() {
+        const baseURL = getApiBaseUrl();
         this.client = axios.create({
-            baseURL: API_BASE_URL,
+            baseURL: baseURL,
             headers: {
                 'Content-Type': 'application/json',
             },

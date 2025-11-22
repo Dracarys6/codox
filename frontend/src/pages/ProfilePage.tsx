@@ -1,12 +1,11 @@
 import { FormEvent, useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import { UpdateProfileRequest } from '../types';
 
 export function ProfilePage() {
   const { user, updateUser } = useAuth();
-  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     nickname: user?.profile?.nickname || '',

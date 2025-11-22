@@ -1575,13 +1575,35 @@ void DocumentController::restoreVersion(const HttpRequestPtr &req,
                     VersionRepository::insertVersion(
                             db, params,
                             [=](int newVersionId, int newVersionNumber) {
-                                Json::Value responseJson;
-                                responseJson["version_id"] = newVersionId;
-                                responseJson["version_number"] = newVersionNumber;
-                                responseJson["doc_id"] = docId;
-                                responseJson["restored_from_version_id"] = versionId;
-                                responseJson["message"] = "Version restored successfully";
-                                ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                                // 更新文档的 last_published_version_id，使恢复的版本成为当前版本
+                                db->execSqlAsync(
+                                        "UPDATE document SET last_published_version_id = $1::bigint, updated_at = "
+                                        "NOW() "
+                                        "WHERE id = $2::bigint",
+                                        [=](const drogon::orm::Result &) {
+                                            Json::Value responseJson;
+                                            responseJson["version_id"] = newVersionId;
+                                            responseJson["version_number"] = newVersionNumber;
+                                            responseJson["doc_id"] = docId;
+                                            responseJson["restored_from_version_id"] = versionId;
+                                            responseJson["message"] =
+                                                    "Version restored successfully. Document content will be updated "
+                                                    "on next load.";
+                                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                                        },
+                                        [=](const drogon::orm::DrogonDbException &e) {
+                                            // 即使更新失败，版本已创建，返回成功但提示需要刷新
+                                            Json::Value responseJson;
+                                            responseJson["version_id"] = newVersionId;
+                                            responseJson["version_number"] = newVersionNumber;
+                                            responseJson["doc_id"] = docId;
+                                            responseJson["restored_from_version_id"] = versionId;
+                                            responseJson["message"] =
+                                                    "Version restored successfully, but failed to update document "
+                                                    "reference. Please refresh the document.";
+                                            ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                                        },
+                                        std::to_string(newVersionId), std::to_string(docId));
                             },
                             [=](const std::string &message, drogon::HttpStatusCode code) {
                                 ResponseUtils::sendError(*callbackPtr, message, code);

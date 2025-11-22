@@ -170,19 +170,14 @@ void AuthController::loginHandler(const HttpRequestPtr& req, std::function<void(
                 std::string accessSecret = appConfig.get("jwt_secret", "default-secret").asString();
                 int accessExpiresIn = appConfig.get("jwt_access_expires_in", 900).asInt();
                 int refreshExpiresIn = appConfig.get("jwt_refresh_expires_in", 2592000).asInt();
-                std::string chatSecret =
-                        appConfig.isMember("chat_jwt_secret") ? appConfig["chat_jwt_secret"].asString() : accessSecret;
-                int chatExpiresIn = appConfig.get("chat_jwt_expires_in", accessExpiresIn).asInt();
 
                 std::string accessToken = JwtUtil::generateToken(userId, accessSecret, accessExpiresIn);
                 std::string refreshToken = JwtUtil::generateToken(userId, accessSecret, refreshExpiresIn);
-                std::string chatToken = JwtUtil::generateToken(userId, chatSecret, chatExpiresIn);
 
                 // 6. 返回响应（格式化 JSON）
                 Json::Value responseJson;
                 responseJson["access_token"] = accessToken;
                 responseJson["refresh_token"] = refreshToken;
-                responseJson["chat_token"] = chatToken;
 
                 Json::Value userJson;
                 userJson["id"] = userId;
@@ -234,15 +229,10 @@ void AuthController::refreshHandler(const HttpRequestPtr& req, std::function<voi
 
     // 4.生成新的access_token
     int accessExpiresIn = appConfig.get("jwt_access_expires_in", 900).asInt();
-    int chatExpiresIn = appConfig.get("chat_jwt_expires_in", accessExpiresIn).asInt();
-    std::string chatSecret =
-            appConfig.isMember("chat_jwt_secret") ? appConfig["chat_jwt_secret"].asString() : accessSecret;
     std::string newAccessToken = JwtUtil::generateToken(userId, accessSecret, accessExpiresIn);
-    std::string newChatToken = JwtUtil::generateToken(userId, chatSecret, chatExpiresIn);
 
     // 5.返回响应
     Json::Value responseJson;
     responseJson["access_token"] = newAccessToken;
-    responseJson["chat_token"] = newChatToken;
     ResponseUtils::sendSuccess(callback, responseJson);
 }
