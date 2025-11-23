@@ -4,10 +4,18 @@ import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
 import { Document } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
+import { getDocumentStatusDisplay } from '../utils/documentStatus';
 import { ImportModal } from '../components/ImportModal';
 import { ExportMenu } from '../components/ExportMenu';
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+
+interface DocumentStats {
+  collaborativeCount: number;
+  attentionNeededCount: number;
+  collaborativeDocs: Document[];
+  attentionNeededDocs: Document[];
+}
 
 export function HomePage() {
   const { user } = useAuth();
@@ -17,14 +25,28 @@ export function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAlertVisible, setIsAlertVisible] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [stats, setStats] = useState<DocumentStats>({ 
+    collaborativeCount: 0, 
+    attentionNeededCount: 0,
+    collaborativeDocs: [],
+    attentionNeededDocs: []
+  });
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
 
   useEffect(() => {
     loadDocuments();
   }, []);
 
+  useEffect(() => {
+    if (documents.length > 0 && user?.id) {
+      loadStats();
+    }
+  }, [documents, user?.id]);
+
   const loadDocuments = async () => {
     try {
-      const response = await apiClient.getDocumentList({ page: 1, pageSize: 10 });
+      // 加载更多文档以获取完整的统计信息（最多100个）
+      const response = await apiClient.getDocumentList({ page: 1, pageSize: 100 });
       const sortedDocs = [...response.docs].sort(
         (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
       );
@@ -37,12 +59,99 @@ export function HomePage() {
     }
   };
 
+  const loadStats = async () => {
+    if (!user?.id) return;
+    
+    setIsLoadingStats(true);
+    try {
+      // 获取所有文档的 ACL 信息，统计协作文档
+      // 注意：只有文档 owner 才能查看 ACL
+      const aclPromises = documents.map((doc) => 
+        apiClient.getDocumentAcl(doc.id).catch((err: any) => {
+          // 如果是权限错误（403），说明用户不是 owner
+          // 但用户能访问这个文档（在列表中），说明文档有 ACL 权限，可能是协作文档
+          // 返回一个标记对象表示用户不是 owner 但能访问
+          if (err.response?.status === 403) {
+            return { isCollaborative: true }; // 用户不是 owner 但能访问，说明是协作文档
+          }
+          return null;
+        })
+      );
+      const aclResults = await Promise.all(aclPromises);
+      
+      // 协作文档统计：
+      // 1. 用户是 owner 且 ACL 中有多个用户的文档
+      // 2. 用户不是 owner 但能访问的文档（说明有 ACL 权限，是协作文档）
+      const collaborativeDocs: Document[] = [];
+      aclResults.forEach((acl, index) => {
+        if (!acl) return;
+        
+        const doc = documents[index];
+        if (!doc) return;
+        
+        // 如果返回的是标记对象，说明用户不是 owner 但能访问，是协作文档
+        if ('isCollaborative' in acl && acl.isCollaborative) {
+          collaborativeDocs.push(doc);
+        }
+        // 如果返回的是 ACL 数据，检查是否有多个用户
+        else if (acl.acl && acl.acl.length > 1) {
+          collaborativeDocs.push(doc);
+        }
+      });
+
+      // 获取所有文档的任务，统计需要关注的文档
+      const taskPromises = documents.map((doc) =>
+        apiClient.getTasks(doc.id).catch(() => ({ tasks: [] }))
+      );
+      const taskResults = await Promise.all(taskPromises);
+      
+      // 需要关注：有未完成任务（todo 或 doing）的文档
+      // 特别是分配给当前用户的任务，或者是当前用户创建的未完成任务
+      const attentionNeededDocs: Document[] = [];
+      const attentionDocIds = new Set<number>();
+      
+      taskResults.forEach((result, index) => {
+        if (result && result.tasks && Array.isArray(result.tasks)) {
+          const hasUnfinishedTask = result.tasks.some((task: any) => {
+            const isUnfinished = task.status === 'todo' || task.status === 'doing';
+            const isAssignedToMe = task.assignee_id === user.id;
+            const isMyTask = task.created_by === user.id;
+            // 如果有未完成的任务，且是指派给当前用户或当前用户创建的
+            return isUnfinished && (isAssignedToMe || isMyTask);
+          });
+          
+          if (hasUnfinishedTask) {
+            const doc = documents[index];
+            if (doc && !attentionDocIds.has(doc.id)) {
+              attentionDocIds.add(doc.id);
+              attentionNeededDocs.push(doc);
+            }
+          }
+        }
+      });
+
+      setStats({
+        collaborativeCount: collaborativeDocs.length,
+        attentionNeededCount: attentionNeededDocs.length,
+        collaborativeDocs,
+        attentionNeededDocs,
+      });
+    } catch (error) {
+      console.error('加载统计信息失败:', error);
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
+
   const overdueDocs = useMemo(() => {
     const now = Date.now();
     return documents.filter((doc) => now - new Date(doc.updated_at).getTime() > THIRTY_DAYS);
   }, [documents]);
 
   const continueDoc = documents[0];
+  
+  // 最近文档只显示前10个
+  const recentDocs = useMemo(() => documents.slice(0, 10), [documents]);
 
   const handleCreateDocument = async () => {
     try {
@@ -216,35 +325,191 @@ export function HomePage() {
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* 统计卡片 */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+            <Link
+              to="/documents"
+              className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer"
+            >
               <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center">
                 <i className="fa fa-files-o text-xl" />
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="text-sm text-gray-500">文档总数</p>
                 <p className="text-2xl font-semibold text-gray-900">{totalDocs}</p>
               </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+              <i className="fa fa-chevron-right text-gray-400"></i>
+            </Link>
+            <div
+              className={`bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 transition-all ${
+                stats.collaborativeDocs.length > 0
+                  ? 'hover:shadow-md hover:border-secondary/30 cursor-pointer'
+                  : ''
+              }`}
+              onClick={() => {
+                if (stats.collaborativeDocs.length > 0) {
+                  // 滚动到协作文档列表
+                  const element = document.getElementById('collaborative-docs');
+                  element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+            >
               <div className="w-12 h-12 rounded-full bg-secondary/10 text-secondary flex items-center justify-center">
                 <i className="fa fa-users text-xl" />
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="text-sm text-gray-500">协作文档</p>
                 <p className="text-2xl font-semibold text-gray-900">
-                  {documents.filter((doc) => doc.is_locked).length}
+                  {isLoadingStats ? (
+                    <i className="fa fa-spinner fa-spin text-lg"></i>
+                  ) : (
+                    stats.collaborativeCount
+                  )}
                 </p>
               </div>
+              {stats.collaborativeDocs.length > 0 && (
+                <i className="fa fa-chevron-right text-gray-400"></i>
+              )}
             </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+            <div
+              className={`bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 transition-all ${
+                stats.attentionNeededDocs.length > 0
+                  ? 'hover:shadow-md hover:border-warning/30 cursor-pointer'
+                  : ''
+              }`}
+              onClick={() => {
+                if (stats.attentionNeededDocs.length > 0) {
+                  // 滚动到需要关注的文档列表
+                  const element = document.getElementById('attention-needed-docs');
+                  element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+              }}
+            >
               <div className="w-12 h-12 rounded-full bg-warning/10 text-warning flex items-center justify-center">
-                <i className="fa fa-clock-o text-xl" />
+                <i className="fa fa-exclamation-circle text-xl" />
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="text-sm text-gray-500">需要关注</p>
-                <p className="text-2xl font-semibold text-gray-900">{overdueDocs.length}</p>
+                <p className="text-2xl font-semibold text-gray-900">
+                  {isLoadingStats ? (
+                    <i className="fa fa-spinner fa-spin text-lg"></i>
+                  ) : (
+                    stats.attentionNeededCount
+                  )}
+                </p>
               </div>
+              {stats.attentionNeededDocs.length > 0 && (
+                <i className="fa fa-chevron-right text-gray-400"></i>
+              )}
             </div>
+          </div>
+
+          {/* 协作文档列表 */}
+          <div id="collaborative-docs" className="mb-10">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <i className="fa fa-users text-secondary"></i>
+                协作文档
+              </h2>
+              <span className="text-sm text-gray-500">
+                {isLoadingStats ? (
+                  <i className="fa fa-spinner fa-spin"></i>
+                ) : (
+                  `${stats.collaborativeCount} 个文档`
+                )}
+              </span>
+            </div>
+            {isLoadingStats ? (
+              <div className="bg-white shadow-sm rounded-xl p-8 text-center border border-gray-100">
+                <i className="fa fa-spinner fa-spin text-2xl text-gray-400 mb-2"></i>
+                <p className="text-sm text-gray-500">加载中...</p>
+              </div>
+            ) : stats.collaborativeDocs.length > 0 ? (
+              <div className="bg-white shadow-sm rounded-xl overflow-hidden border border-gray-100">
+                <div className="divide-y divide-gray-200">
+                  {stats.collaborativeDocs.map((doc) => (
+                    <Link
+                      key={doc.id}
+                      to={`/editor/${doc.id}`}
+                      className="block px-6 py-4 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="flex-shrink-0 h-10 w-10 bg-secondary/10 rounded-md flex items-center justify-center">
+                            <i className="fa fa-file-text-o text-secondary"></i>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{doc.title}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              最后编辑：{formatDate(doc.updated_at)}
+                            </div>
+                          </div>
+                        </div>
+                        <i className="fa fa-chevron-right text-gray-400 ml-4"></i>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white shadow-sm rounded-xl p-8 text-center border border-gray-100">
+                <i className="fa fa-users text-4xl text-gray-300 mb-3"></i>
+                <p className="text-sm text-gray-500">暂无协作文档</p>
+              </div>
+            )}
+          </div>
+
+          {/* 需要关注的文档列表 */}
+          <div id="attention-needed-docs" className="mb-10">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <i className="fa fa-exclamation-circle text-warning"></i>
+                需要关注
+              </h2>
+              <span className="text-sm text-gray-500">
+                {isLoadingStats ? (
+                  <i className="fa fa-spinner fa-spin"></i>
+                ) : (
+                  `${stats.attentionNeededCount} 个文档`
+                )}
+              </span>
+            </div>
+            {isLoadingStats ? (
+              <div className="bg-white shadow-sm rounded-xl p-8 text-center border border-gray-100">
+                <i className="fa fa-spinner fa-spin text-2xl text-gray-400 mb-2"></i>
+                <p className="text-sm text-gray-500">加载中...</p>
+              </div>
+            ) : stats.attentionNeededDocs.length > 0 ? (
+              <div className="bg-white shadow-sm rounded-xl overflow-hidden border border-gray-100">
+                <div className="divide-y divide-gray-200">
+                  {stats.attentionNeededDocs.map((doc) => (
+                    <Link
+                      key={doc.id}
+                      to={`/editor/${doc.id}`}
+                      className="block px-6 py-4 hover:bg-warning/5 transition-colors border-l-4 border-warning/30"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="flex-shrink-0 h-10 w-10 bg-warning/10 rounded-md flex items-center justify-center">
+                            <i className="fa fa-exclamation-circle text-warning"></i>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{doc.title}</div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              最后编辑：{formatDate(doc.updated_at)}
+                            </div>
+                          </div>
+                        </div>
+                        <i className="fa fa-chevron-right text-gray-400 ml-4"></i>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white shadow-sm rounded-xl p-8 text-center border border-gray-100">
+                <i className="fa fa-check-circle text-4xl text-gray-300 mb-3"></i>
+                <p className="text-sm text-gray-500">暂无需要关注的文档</p>
+              </div>
+            )}
           </div>
 
           {/* 快速功能导航 */}
@@ -275,14 +540,14 @@ export function HomePage() {
             </button>
 
             <Link
-              to="/documents"
+              to="/search"
               className="bg-white rounded-xl shadow-sm p-5 flex flex-col items-center text-center card-hover border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all"
             >
               <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center mb-3 shadow-sm">
-                <i className="fa fa-share-alt text-blue-600 text-xl"></i>
+                <i className="fa fa-search text-blue-600 text-xl"></i>
               </div>
-              <h3 className="font-medium text-gray-900">管理文档</h3>
-              <p className="text-sm text-gray-500 mt-1">查看所有文档</p>
+              <h3 className="font-medium text-gray-900">搜索文档</h3>
+              <p className="text-sm text-gray-500 mt-1">快速查找文档内容</p>
             </Link>
           </div>
 
@@ -304,7 +569,7 @@ export function HomePage() {
                 <i className="fa fa-spinner fa-spin text-4xl text-gray-400 mb-4"></i>
                 <p className="text-gray-500">加载中...</p>
               </div>
-            ) : documents.length === 0 ? (
+            ) : recentDocs.length === 0 ? (
               <div className="bg-white shadow-sm rounded-xl p-12 text-center">
                 <i className="fa fa-file-text-o text-6xl text-gray-300 mb-4"></i>
                 <h3 className="text-xl font-medium text-gray-900 mb-2">暂无文档</h3>
@@ -336,7 +601,7 @@ export function HomePage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {documents.map((doc) => (
+                    {recentDocs.map((doc) => (
                       <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
@@ -357,9 +622,14 @@ export function HomePage() {
                           <div className="text-sm text-gray-500">{formatDate(doc.updated_at)}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                            {doc.is_locked ? '已锁定' : '已保存'}
+                          {(() => {
+                            const statusDisplay = getDocumentStatusDisplay(doc.status, doc.is_locked);
+                            return (
+                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusDisplay.className}`}>
+                                {statusDisplay.text}
                           </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end gap-2">

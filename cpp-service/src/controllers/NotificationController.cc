@@ -17,13 +17,39 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
         return;
     }
 
+    // 辅助函数：获取参数，如果 getParameter 获取不到，尝试从查询字符串手动解析
+    auto getParam = [&](const std::string& name) -> std::string {
+        std::string value = req->getParameter(name);
+        if (!value.empty()) {
+            return value;
+        }
+        // 如果 getParameter 获取不到，尝试从查询字符串手动解析
+        std::string queryString = req->query();
+        if (!queryString.empty()) {
+            std::string searchKey = name + "=";
+            size_t pos = queryString.find(searchKey);
+            if (pos != std::string::npos) {
+                size_t start = pos + searchKey.length();
+                size_t end = queryString.find("&", start);
+                if (end == std::string::npos) {
+                    end = queryString.length();
+                }
+                value = queryString.substr(start, end - start);
+                // URL 解码
+                value = drogon::utils::urlDecode(value);
+                return value;
+            }
+        }
+        return "";
+    };
+
     int page = 1;
     int pageSize = 20;
     bool unreadOnly = false;
 
     // 通用的整数参数解析，保证边界合法。
     auto parseIntParam = [&](const std::string& name, int minValue, int maxValue, int defaultValue) {
-        std::string value = req->getParameter(name);
+        std::string value = getParam(name);
         if (value.empty()) return defaultValue;
         try {
             int parsed = std::stoi(value);
@@ -37,9 +63,9 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
 
     page = parseIntParam("page", 1, std::numeric_limits<int>::max(), page);
     // 支持 pageSize/page_size 两种命名
-    std::string pageSizeParam = req->getParameter("page_size");
+    std::string pageSizeParam = getParam("page_size");
     if (pageSizeParam.empty()) {
-        pageSizeParam = req->getParameter("pageSize");
+        pageSizeParam = getParam("pageSize");
     }
     if (!pageSizeParam.empty()) {
         try {
@@ -50,24 +76,24 @@ void NotificationController::getNotifications(const HttpRequestPtr& req,
         }
     }
 
-    std::string unreadOnlyStr = req->getParameter("unread_only");
+    std::string unreadOnlyStr = getParam("unread_only");
     if (unreadOnlyStr.empty()) {
-        unreadOnlyStr = req->getParameter("unreadOnly");
+        unreadOnlyStr = getParam("unreadOnly");
     }
     if (unreadOnlyStr == "true" || unreadOnlyStr == "1") {
         unreadOnly = true;
     }
 
     // 支持多种命名的筛选参数，方便前端渐进迁移。
-    std::string typeFilter = req->getParameter("type");
-    std::string docIdFilter = req->getParameter("doc_id");
+    std::string typeFilter = getParam("type");
+    std::string docIdFilter = getParam("doc_id");
     if (docIdFilter.empty()) {
-        docIdFilter = req->getParameter("docId");
+        docIdFilter = getParam("docId");
     }
-    std::string startDate = req->getParameter("start_date");
-    if (startDate.empty()) startDate = req->getParameter("startDate");
-    std::string endDate = req->getParameter("end_date");
-    if (endDate.empty()) endDate = req->getParameter("endDate");
+    std::string startDate = getParam("start_date");
+    if (startDate.empty()) startDate = getParam("startDate");
+    std::string endDate = getParam("end_date");
+    if (endDate.empty()) endDate = getParam("endDate");
 
     auto db = drogon::app().getDbClient();
     if (!db) {

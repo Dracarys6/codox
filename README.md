@@ -23,6 +23,9 @@
 - ✅ **实时通讯**：ChatController、聊天室/消息 API、WebSocket 聊天组件
 - ✅ **用户搜索**：支持按ID、邮箱、昵称搜索用户，用于 ACL 权限管理
 - ✅ **文档导入导出**：Word/PDF/Markdown 格式导入导出，独立转换服务
+- ✅ **文档状态管理**：支持草稿、已保存、已发布、已归档、已锁定等状态，保存后自动更新状态
+- ✅ **主页统计优化**：协作文档和需要关注文档的统计与列表展示
+- ✅ **通知筛选功能**：支持按类型、文档ID、日期范围、未读状态筛选通知
 - 🔄 **阶段 4 增强**：通知过滤与偏好、版本时间线/差异、管理员用户管理与运营分析
 
 ## 🛠️ 技术栈
@@ -224,23 +227,27 @@ VITE_WS_URL=ws://localhost:1234
 - `POST /api/auth/refresh` - 刷新 Token
 
 ### 文档相关
-- `GET /api/docs` - 文档列表
+- `GET /api/docs` - 文档列表（支持状态筛选）
 - `POST /api/docs` - 创建文档
 - `GET /api/docs/{id}` - 文档详情
-- `PATCH /api/docs/{id}` - 更新文档
+- `PATCH /api/docs/{id}` - 更新文档（支持状态更新）
 - `DELETE /api/docs/{id}` - 删除文档
 - `GET /api/docs/{id}/acl` - 获取 ACL 列表
 - `PUT /api/docs/{id}/acl` - 更新 ACL
-- `POST /api/documents/import/word` - 导入 Word 文档
-- `POST /api/documents/import/pdf` - 导入 PDF 文档
-- `POST /api/documents/import/markdown` - 导入 Markdown 文档
-- `GET /api/documents/{id}/export/word` - 导出为 Word
-- `GET /api/documents/{id}/export/pdf` - 导出为 PDF
-- `GET /api/documents/{id}/export/markdown` - 导出为 Markdown
+- `POST /api/docs/import/word` - 导入 Word 文档
+- `POST /api/docs/import/pdf` - 导入 PDF 文档
+- `POST /api/docs/import/markdown` - 导入 Markdown 文档（支持文件上传和文本输入）
+- `GET /api/docs/{id}/export/word` - 导出为 Word
+- `GET /api/docs/{id}/export/pdf` - 导出为 PDF
+- `GET /api/docs/{id}/export/markdown` - 导出为 Markdown
+
+### 通知相关
+- `GET /api/notifications` - 通知列表（支持类型、文档ID、日期范围、未读状态筛选）
+- `POST /api/notifications/read` - 标记通知为已读
+- `GET /api/notifications/unread-count` - 获取未读通知数量
 
 ### 其他
 - `GET /api/search` - 全文搜索
-- `GET /api/notifications` - 通知列表
 - `GET /api/chat/rooms` - 聊天室列表
 
 详细 API 文档请参考：[API 设计文档](./docs/API-01-API设计.md)
@@ -411,10 +418,6 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 - **[第三阶段开发指南](./docs/PHASE-03-协作功能开发指南.md)** - 实时协作、评论、任务、通知、搜索 ✅
 - **[第四阶段开发指南](./docs/PHASE-04-功能完善开发指南.md)** - 实时通讯、通知增强、导入导出、版本与用户管理
 
-### 功能说明
-- **[用户搜索功能](./docs/FEATURE-用户搜索功能.md)** - 用户搜索功能详细说明
-- **[文档导入导出功能](./docs/GUIDE-03-文档导入导出功能说明.md)** - 文档导入导出功能详细说明 ✅
-
 ### 操作指南
 - **[项目启动指南](./docs/GUIDE-01-项目启动指南.md)** - 项目启动和运行指南
 - **[后端 API 测试方法](./docs/GUIDE-02-后端API测试方法.md)** - API 测试方法
@@ -475,6 +478,9 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 - [x] 用户搜索功能（`GET /api/users/search`、ACL 管理集成）
 - [x] 文档实时通讯（ChatController、WebSocket、未读同步）
 - [x] 文档导入导出功能（Word/PDF/Markdown，doc-converter-service，前后端完整实现）✅
+- [x] 文档状态管理（自动状态更新、状态筛选）
+- [x] 主页统计优化（协作文档、需要关注文档）
+- [x] 通知筛选功能（类型、文档、日期、未读状态筛选）
 - [ ] 文档版本控制增强（手动版本、diff、恢复体验）
 - [ ] 用户管理与运营（管理员用户列表、角色调整、行为分析、满意度调查）
 

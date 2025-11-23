@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
-import { Document, DocumentVersion, AclEntry, DocumentAcl } from '../types';
+import { Document, DocumentVersion, AclEntry, DocumentAcl, DocumentStatus } from '../types';
+import { getDocumentStatusDisplay } from '../utils/documentStatus';
 import { DocumentEditor } from '../components/DocumentEditor';
 import { CommentPanel } from '../components/CommentPanel';
 import { TaskPanel } from '../components/TaskPanel';
@@ -14,6 +15,7 @@ type SideTabKey = 'info' | 'comments' | 'tasks' | 'acl' | 'chat';
 
 export function EditorPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const docId = id ? Number(id) : NaN;
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -30,16 +32,29 @@ export function EditorPage() {
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState<string | null>(null);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  // 用于强制重新加载编辑器的 key
+  const [editorKey, setEditorKey] = useState(0);
 
   useEffect(() => {
     if (!id || isNaN(docId) || docId <= 0) {
       navigate('/documents');
       return;
     }
+    
+    // 检查是否有 reload 参数
+    const shouldReload = searchParams.get('reload') === 'true';
+    if (shouldReload) {
+      // 移除 reload 参数
+      setSearchParams({}, { replace: true });
+      // 强制重新加载编辑器
+      setEditorKey(prev => prev + 1);
+    }
+    
     loadDocument(docId);
     loadVersions(docId);
     setAclEntries([]);
-  }, [docId, id, navigate]);
+  }, [docId, id, navigate, searchParams, setSearchParams]);
   const handleAclLoaded = (data: DocumentAcl | null) => {
     setAclEntries(data?.acl || []);
   };
@@ -114,6 +129,17 @@ export function EditorPage() {
       if (saveRequestRef.current) {
         await saveRequestRef.current();
         setLastSavedAt(new Date().toLocaleTimeString('zh-CN'));
+        
+        // 如果文档状态是 draft，自动更新为 saved
+        if (document && document.status === 'draft') {
+          try {
+            const updated = await apiClient.updateDocument(docId, { status: 'saved' });
+            setDocument(updated);
+          } catch (err: any) {
+            // 静默失败，不影响保存流程
+            console.warn('Failed to update document status:', err);
+          }
+        }
       }
       // 显示保存成功提示
       setTimeout(() => {
@@ -263,10 +289,22 @@ export function EditorPage() {
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_350px] gap-6 items-start">
             <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 min-h-[calc(100vh-260px)]">
               <DocumentEditor
+                key={`editor-${docId}-${editorKey}`}
                 docId={docId}
-                onSave={() => {
+                onSave={async () => {
                   setLastSavedAt(new Date().toLocaleTimeString('zh-CN'));
                   setIsSaving(false);
+                  
+                  // 如果文档状态是 draft，自动更新为 saved
+                  if (document && document.status === 'draft') {
+                    try {
+                      const updated = await apiClient.updateDocument(docId, { status: 'saved' });
+                      setDocument(updated);
+                    } catch (err: any) {
+                      // 静默失败，不影响保存流程
+                      console.warn('Failed to update document status:', err);
+                    }
+                  }
                 }}
                 onSaveReady={(saveFn) => {
                   // 保存函数准备好时，存储到 ref
@@ -307,6 +345,49 @@ export function EditorPage() {
                     <div>
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">文档信息</h3>
                       <div className="space-y-2 text-sm text-gray-600">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">状态</span>
+                          <div className="flex items-center gap-2">
+                            {(() => {
+                              const statusDisplay = getDocumentStatusDisplay(document!.status, document!.is_locked);
+                              return (
+                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${statusDisplay.className}`}>
+                                  {statusDisplay.text}
+                                </span>
+                              );
+                            })()}
+                            {isOwner ? (
+                              <select
+                                value={document!.status || 'draft'}
+                                onChange={async (e) => {
+                                  const newStatus = e.target.value as DocumentStatus;
+                                  if (newStatus === document!.status) return;
+                                  
+                                  setIsUpdatingStatus(true);
+                                  try {
+                                    const updated = await apiClient.updateDocument(docId, { status: newStatus });
+                                    setDocument(updated);
+                                  } catch (err: any) {
+                                    alert(err.response?.data?.error || '更新状态失败');
+                                  } finally {
+                                    setIsUpdatingStatus(false);
+                                  }
+                                }}
+                                disabled={isUpdatingStatus}
+                                title="点击切换文档状态"
+                                className="text-xs border border-gray-300 rounded px-2 py-1 focus:ring-2 focus:ring-primary/50 focus:border-primary outline-none disabled:opacity-50 hover:border-primary/50 transition-colors cursor-pointer"
+                              >
+                                <option value="draft">草稿</option>
+                                <option value="saved">已保存</option>
+                                <option value="published">已发布</option>
+                                <option value="archived">已归档</option>
+                                <option value="locked">已锁定</option>
+                              </select>
+                            ) : (
+                              <span className="text-xs text-gray-400">仅所有者可修改</span>
+                            )}
+                          </div>
+                        </div>
                         <div className="flex justify-between">
                           <span>创建时间</span>
                           <span>{new Date(document!.created_at).toLocaleString('zh-CN')}</span>

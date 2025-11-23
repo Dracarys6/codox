@@ -10,7 +10,8 @@
 static void addSecurityHeaders(drogon::HttpResponsePtr& resp) {
     resp->addHeader("X-Content-Type-Options", "nosniff");
     resp->addHeader("X-Frame-Options", "DENY");
-    resp->addHeader("X-XSS-Protection", "1; mode=block");
+    // X-XSS-Protection 已被现代浏览器废弃，移除以避免警告
+    // resp->addHeader("X-XSS-Protection", "1; mode=block");
     resp->addHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     // 注意：Content-Security-Policy 应该根据实际需求配置，这里提供一个宽松的默认值
     // 如果需要更严格的 CSP，应该在配置文件中或通过中间件设置

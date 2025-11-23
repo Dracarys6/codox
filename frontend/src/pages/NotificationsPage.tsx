@@ -57,15 +57,28 @@ export function NotificationsPage() {
                 page_size: pageSize,
                 unread_only: inputFilters.unreadOnly || undefined,
                 type: inputFilters.type || undefined,
-                start_date: inputFilters.startDate || undefined,
-                end_date: inputFilters.endDate || undefined,
             };
+            
+            // 处理开始日期：转换为 ISO 8601 格式（如果提供了日期）
+            if (inputFilters.startDate) {
+                // 将 YYYY-MM-DD 格式转换为 ISO 8601 格式（开始时间：00:00:00）
+                params.start_date = `${inputFilters.startDate}T00:00:00Z`;
+            }
+            
+            // 处理结束日期：转换为 ISO 8601 格式（如果提供了日期）
+            if (inputFilters.endDate) {
+                // 将 YYYY-MM-DD 格式转换为 ISO 8601 格式（结束时间：23:59:59）
+                params.end_date = `${inputFilters.endDate}T23:59:59Z`;
+            }
+            
+            // 处理文档ID
             if (inputFilters.docId.trim()) {
                 const docId = Number(inputFilters.docId);
-                if (!Number.isNaN(docId)) {
+                if (!Number.isNaN(docId) && docId > 0) {
                     params.doc_id = docId;
                 }
             }
+            
             return params;
         },
         [pageSize]
@@ -87,18 +100,20 @@ export function NotificationsPage() {
                 setLoading(false);
             }
         },
-        [buildParams, filters, page]
+        [buildParams]
     );
 
+    // 初始加载和当 filters 或 page 改变时自动获取数据
     useEffect(() => {
-        fetchNotifications();
-    }, [fetchNotifications]);
+        fetchNotifications(filters, page);
+    }, [fetchNotifications, filters, page]);
 
     const handleFilterSubmit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const nextFilters: FilterState = { ...filterForm };
         setFilters(nextFilters);
         setPage(1);
+        // useEffect 会在 filters 或 page 改变时自动调用 fetchNotifications
     };
 
     const resetFilters = () => {
@@ -106,6 +121,7 @@ export function NotificationsPage() {
         setFilterForm(next);
         setFilters(next);
         setPage(1);
+        // useEffect 会在 filters 或 page 改变时自动调用 fetchNotifications
     };
 
     const handleSelect = (id: number) => {
@@ -430,7 +446,11 @@ export function NotificationsPage() {
                     <div className="flex gap-2">
                         <button
                             type="button"
-                            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                            onClick={() => {
+                                const newPage = Math.max(1, page - 1);
+                                setPage(newPage);
+                                // useEffect 会在 page 改变时自动调用 fetchNotifications
+                            }}
                             disabled={page <= 1}
                             className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
                         >
@@ -438,7 +458,11 @@ export function NotificationsPage() {
                         </button>
                         <button
                             type="button"
-                            onClick={() => setPage((prev) => Math.min(pageCount, prev + 1))}
+                            onClick={() => {
+                                const newPage = Math.min(pageCount, page + 1);
+                                setPage(newPage);
+                                // useEffect 会在 page 改变时自动调用 fetchNotifications
+                            }}
                             disabled={page >= pageCount}
                             className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40"
                         >

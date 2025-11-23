@@ -80,8 +80,26 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
 
                 try {
                     const bootstrapResponse = await apiClient.getBootstrap(docId);
-                    const { snapshot_url } = bootstrapResponse;
-                    if (snapshot_url && snapshot_url !== 'null') {
+                    const { snapshot_url, content_html, content_text } = bootstrapResponse;
+
+                    // 优化：如果有 HTML 内容，优先使用 HTML 内容初始化（更可靠）
+                    // 这样可以避免快照文件可能指向旧内容的问题（特别是恢复的版本）
+                    const hasHtmlContent = content_html && content_html.trim().length > 0;
+                    const hasTextContent = content_text && content_text.trim().length > 0;
+
+                    // 如果有 HTML 内容，强制使用 HTML 内容初始化（优先于快照）
+                    // 这确保恢复的版本显示正确的内容
+                    if (hasHtmlContent || hasTextContent) {
+                        console.log('HTML content available, will initialize from HTML (preferred for restored versions)...');
+
+                        // 将 HTML 内容存储到 Yjs 的临时字段中，等待编辑器准备好后初始化
+                        ydoc.getMap('temp').set('html_content', content_html || '');
+                        ydoc.getMap('temp').set('text_content', content_text || '');
+                        ydoc.getMap('temp').set('needs_html_init', true);
+
+                        console.log('Stored HTML content for later initialization, length:', (content_html || '').length);
+                    } else if (snapshot_url && snapshot_url !== 'null') {
+                        // 只有在没有 HTML 内容时才尝试加载快照
                         try {
                             let snapshotBytes: Uint8Array;
                             if (snapshot_url.startsWith('data:')) {
@@ -106,7 +124,7 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
                                 console.log('Snapshot loaded successfully, size:', snapshotBytes.length);
                             }
                         } catch (error) {
-                            console.warn('Failed to load snapshot, starting with empty document:', error);
+                            console.warn('Failed to load snapshot:', error);
                         }
                     }
                 } catch (error) {
@@ -144,7 +162,9 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
         return () => {
             isMounted = false;
             setCollabResources(null);
-            provider?.destroy();
+            if (provider) {
+                provider.destroy();
+            }
             ydoc.destroy();
             providerRef.current = null;
         };
@@ -154,6 +174,7 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
         if (!editor || !collabResources) return;
 
         let isMounted = true;
+        let initTimeout: number | null = null;
         const { ydoc, provider } = collabResources;
 
         const handleStatus = (event: { status: string }) => {
@@ -163,14 +184,72 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
             }
         };
 
+        // 检查是否需要从 HTML 初始化内容（导入的文档或恢复的版本）
+        const checkAndInitFromHtml = () => {
+            if (!editor || !isMounted) return;
+
+            try {
+                const tempMap = ydoc.getMap('temp');
+                const needsInit = tempMap.get('needs_html_init');
+                const htmlContent = tempMap.get('html_content') as string | undefined;
+
+                if (needsInit && htmlContent) {
+                    // 优化：对于恢复的版本，应该强制设置内容，而不是检查是否为空
+                    // 因为编辑器可能还保留着之前的内容（通过 WebSocket 同步）
+                    console.log('Initializing editor from HTML content (force mode for restored versions)...');
+                    console.log('HTML content length:', htmlContent.length);
+
+                    // 先清除 Yjs 文档中的 prosemirror 内容，确保从干净状态开始
+                    try {
+                        const prosemirrorType = ydoc.get('prosemirror', Y.XmlFragment);
+                        if (prosemirrorType && prosemirrorType.length > 0) {
+                            console.log('Clearing existing Yjs content before initializing from HTML...');
+                            // 删除所有子节点
+                            while (prosemirrorType.length > 0) {
+                                prosemirrorType.delete(0);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Failed to clear Yjs content:', e);
+                    }
+
+                    // 使用 TipTap 的 setContent 方法从 HTML 初始化
+                    // 这会替换当前内容，确保显示恢复的版本内容
+                    // 使用 setTimeout 确保在下一个事件循环中执行，避免与 Yjs 同步冲突
+                    setTimeout(() => {
+                        if (editor && isMounted) {
+                            editor.commands.setContent(htmlContent);
+                            console.log('Editor initialized from HTML successfully');
+                        }
+                    }, 100);
+
+                    // 清除标记，避免重复初始化
+                    tempMap.delete('needs_html_init');
+                    tempMap.delete('html_content');
+                    tempMap.delete('text_content');
+                }
+            } catch (error) {
+                console.error('Failed to initialize from HTML:', error);
+            }
+        };
+
         const handleSync = (isSynced: boolean) => {
             if (isMounted && isSynced) {
                 setIsConnected(true);
+                // 当 Yjs 同步完成时检查是否需要从 HTML 初始化
+                setTimeout(() => {
+                    checkAndInitFromHtml();
+                }, 200);
             }
         };
 
         provider.on('status', handleStatus);
         provider.on('sync', handleSync);
+
+        // 延迟检查，确保编辑器完全初始化
+        initTimeout = window.setTimeout(() => {
+            checkAndInitFromHtml();
+        }, 500);
 
         const saveSnapshot = async (): Promise<void> => {
             if (!isMounted) return;
@@ -224,6 +303,9 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
 
         return () => {
             isMounted = false;
+            if (initTimeout !== null) {
+                window.clearTimeout(initTimeout);
+            }
             if (saveIntervalRef.current !== null) {
                 window.clearInterval(saveIntervalRef.current);
                 saveIntervalRef.current = null;

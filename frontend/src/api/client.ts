@@ -351,8 +351,20 @@ class ApiClient {
     /**
      * 获取引导快照
      */
-    async getBootstrap(docId: number): Promise<{ snapshot_url: string | null; sha256: string | null; version_id: number | null }> {
-        const response = await this.client.get<{ snapshot_url: string | null; sha256: string | null; version_id: number | null }>(
+    async getBootstrap(docId: number): Promise<{ 
+        snapshot_url: string | null; 
+        sha256: string | null; 
+        version_id: number | null;
+        content_html?: string | null;
+        content_text?: string | null;
+    }> {
+        const response = await this.client.get<{ 
+            snapshot_url: string | null; 
+            sha256: string | null; 
+            version_id: number | null;
+            content_html?: string | null;
+            content_text?: string | null;
+        }>(
             `/collab/bootstrap/${docId}`
         );
         return response.data;
@@ -591,39 +603,27 @@ class ApiClient {
     // ========== 文档导入导出 API ==========
 
     /**
-     * 导入 Word 文档
-     */
-    async importWord(file: File): Promise<Document> {
-        const formData = new FormData();
-        formData.append('file', file);
-        const response = await this.client.post<Document>('/docs/import/word', formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
-        });
-        return response.data;
-    }
-
-    /**
-     * 导入 PDF 文档
-     */
-    async importPdf(file: File): Promise<Document> {
-        const formData = new FormData();
-        formData.append('file', file);
-        const response = await this.client.post<Document>('/docs/import/pdf', formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
-        });
-        return response.data;
-    }
-
-    /**
      * 导入 Markdown 文档
+     * 支持两种方式：
+     * 1. 文件上传：传入 File 对象
+     * 2. 文本内容：传入 { markdown: string, title?: string }
      */
-    async importMarkdown(data: { markdown: string; title?: string }): Promise<Document> {
-        const response = await this.client.post<Document>('/docs/import/markdown', data);
-        return response.data;
+    async importMarkdown(fileOrData: File | { markdown: string; title?: string }): Promise<Document> {
+        if (fileOrData instanceof File) {
+            // 文件上传方式
+            const formData = new FormData();
+            formData.append('file', fileOrData);
+            const response = await this.client.post<Document>('/docs/import/markdown', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+            return response.data;
+        } else {
+            // JSON 文本方式
+            const response = await this.client.post<Document>('/docs/import/markdown', fileOrData);
+            return response.data;
+        }
     }
 
     /**

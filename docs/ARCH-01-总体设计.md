@@ -309,8 +309,11 @@
 
 - [x] 文档权限管理强化（GET/PUT ACL、前端 `AclManager` 验收）
 - [x] 实时通讯模块（ChatController、WebSocket、未读消息）
-- [ ] 通知系统增强（过滤、`notification_setting`、WS 推送）
-- [ ] 文档导入导出（Word / PDF / Markdown）
+- [x] 通知系统筛选功能（类型、文档ID、日期范围、未读状态筛选）✅
+- [x] 文档导入导出（Word / PDF / Markdown）✅
+- [x] 文档状态管理（状态字段、自动更新、状态筛选）✅
+- [x] 主页统计优化（协作文档、需要关注文档）✅
+- [ ] 通知偏好设置和 WebSocket 实时推送
 - [ ] 文档版本控制增强（自动/手动版本、diff、恢复体验）
 - [ ] 用户管理与运营（用户列表、权限调整、行为分析、满意度调查）
 

@@ -12,10 +12,7 @@ interface ImportModalProps {
     onImportSuccess?: (document: Document) => void;
 }
 
-type ImportType = 'word' | 'pdf' | 'markdown';
-
 export function ImportModal({ isOpen, onClose, onImportSuccess }: ImportModalProps) {
-    const [importType, setImportType] = useState<ImportType>('word');
     const [isLoading, setIsLoading] = useState(false);
     const [markdownContent, setMarkdownContent] = useState('');
     const [markdownTitle, setMarkdownTitle] = useState('');
@@ -27,12 +24,8 @@ export function ImportModal({ isOpen, onClose, onImportSuccess }: ImportModalPro
         if (!file) return;
 
         // 验证文件类型
-        if (importType === 'word' && !file.name.endsWith('.docx')) {
-            toast.error('请选择 .docx 格式的 Word 文档');
-            return;
-        }
-        if (importType === 'pdf' && !file.name.endsWith('.pdf')) {
-            toast.error('请选择 .pdf 格式的 PDF 文档');
+        if (!file.name.endsWith('.md') && !file.name.endsWith('.markdown')) {
+            toast.error('请选择 .md 或 .markdown 格式的 Markdown 文档');
             return;
         }
 
@@ -51,22 +44,13 @@ export function ImportModal({ isOpen, onClose, onImportSuccess }: ImportModalPro
         try {
             let document: Document;
 
-            if (importType === 'word') {
-                if (!file) {
-                    toast.error('请选择文件');
-                    return;
-                }
-                document = await apiClient.importWord(file);
-            } else if (importType === 'pdf') {
-                if (!file) {
-                    toast.error('请选择文件');
-                    return;
-                }
-                document = await apiClient.importPdf(file);
+            if (file) {
+                // 文件上传方式
+                document = await apiClient.importMarkdown(file);
             } else {
-                // Markdown
+                // 文本输入方式
                 if (!markdownContent.trim()) {
-                    toast.error('请输入 Markdown 内容');
+                    toast.error('请选择文件或输入 Markdown 内容');
                     return;
                 }
                 document = await apiClient.importMarkdown({
@@ -90,7 +74,6 @@ export function ImportModal({ isOpen, onClose, onImportSuccess }: ImportModalPro
     const handleClose = () => {
         setMarkdownContent('');
         setMarkdownTitle('');
-        setImportType('word');
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
@@ -106,78 +89,45 @@ export function ImportModal({ isOpen, onClose, onImportSuccess }: ImportModalPro
         <Modal
             isOpen={isOpen}
             onClose={handleClose}
-            title="导入文档"
-            description="支持导入 Word、PDF 或 Markdown 格式的文档"
+            title="导入 Markdown 文档"
+            description="支持上传 Markdown 文件或直接粘贴 Markdown 内容"
             size="lg"
         >
             <div className="space-y-6">
-                {/* 导入类型选择 */}
+                {/* 文件上传区域 */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                        选择导入类型
+                        选择 Markdown 文档 (.md)
                     </label>
-                    <div className="grid grid-cols-3 gap-3">
-                        {(['word', 'pdf', 'markdown'] as ImportType[]).map((type) => (
-                            <button
-                                key={type}
-                                onClick={() => {
-                                    setImportType(type);
-                                    if (fileInputRef.current) {
-                                        fileInputRef.current.value = '';
-                                    }
-                                }}
-                                className={`
-                                    px-4 py-3 rounded-lg border-2 transition-all
-                                    ${
-                                        importType === type
-                                            ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                                            : 'border-gray-200 hover:border-gray-300 text-gray-700'
-                                    }
-                                `}
-                            >
-                                {type === 'word' && '📄 Word'}
-                                {type === 'pdf' && '📕 PDF'}
-                                {type === 'markdown' && '📝 Markdown'}
-                            </button>
-                        ))}
+                    <div
+                        onClick={triggerFileSelect}
+                        className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                    >
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".md,.markdown"
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+                        <div className="space-y-2">
+                            <div className="text-4xl">📝</div>
+                            <p className="text-gray-600">
+                                点击选择文件或拖拽文件到此处
+                            </p>
+                            <p className="text-sm text-gray-500">
+                                支持 .md, .markdown 格式，最大 50MB
+                            </p>
+                        </div>
                     </div>
                 </div>
 
-                {/* 文件上传区域（Word 和 PDF） */}
-                {(importType === 'word' || importType === 'pdf') && (
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            {importType === 'word' ? '选择 Word 文档 (.docx)' : '选择 PDF 文档 (.pdf)'}
-                        </label>
-                        <div
-                            onClick={triggerFileSelect}
-                            className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
-                        >
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept={importType === 'word' ? '.docx' : '.pdf'}
-                                onChange={handleFileSelect}
-                                className="hidden"
-                            />
-                            <div className="space-y-2">
-                                <div className="text-4xl">
-                                    {importType === 'word' ? '📄' : '📕'}
-                                </div>
-                                <p className="text-gray-600">
-                                    点击选择文件或拖拽文件到此处
-                                </p>
-                                <p className="text-sm text-gray-500">
-                                    支持 {importType === 'word' ? '.docx' : '.pdf'} 格式，最大 50MB
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {/* Markdown 输入区域 */}
-                {importType === 'markdown' && (
+                {/* Markdown 文本输入区域（可选，如果未选择文件） */}
+                {!fileInputRef.current?.files?.[0] && (
                     <div className="space-y-4">
+                        <div className="text-sm text-gray-600 mb-2">
+                            或者直接粘贴 Markdown 内容：
+                        </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                 文档标题（可选）
@@ -215,10 +165,7 @@ export function ImportModal({ isOpen, onClose, onImportSuccess }: ImportModalPro
                         variant="primary"
                         onClick={() => handleImport()}
                         isLoading={isLoading}
-                        disabled={
-                            (importType === 'markdown' && !markdownContent.trim()) ||
-                            ((importType === 'word' || importType === 'pdf') && !fileInputRef.current?.files?.[0])
-                        }
+                        disabled={!fileInputRef.current?.files?.[0] && !markdownContent.trim()}
                     >
                         {isLoading ? '导入中...' : '导入文档'}
                     </Button>
@@ -227,4 +174,3 @@ export function ImportModal({ isOpen, onClose, onImportSuccess }: ImportModalPro
         </Modal>
     );
 }
-

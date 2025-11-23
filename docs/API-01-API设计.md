@@ -5,8 +5,8 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 
 # codox API 总览
 
-> 文档版本：2025-11-19  codox
-> 维护人：研发团队（已同步第四阶段实时通讯与 ACL 进展，附上后续增强计划）
+> 文档版本：2025-01-20  codox
+> 维护人：研发团队（已同步第四阶段最新功能：文档导入导出、状态管理、主页统计、通知筛选）
 
 ---
 
@@ -28,10 +28,10 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 > ✅ 用户搜索模块已完成实现，支持多字段搜索和分页功能，主要用于 ACL 权限管理中添加协作者。
 
 ### 文档 CRUD
-- `POST /api/docs` — 新建文档，标题必填；自动创建 owner ACL，可附带初始标签。
-- `GET /api/docs` — 文档列表，支持 `page`、`pageSize`、`tag`、`author` 筛选，仅返回有权限的文档。
-- `GET /api/docs/{id}` — 文档详情，返回标签、锁定状态、最后发布版本等。
-- `PATCH /api/docs/{id}` — 修改标题/锁定状态/标签（标签增删差异化更新）。
+- `POST /api/docs` — 新建文档，标题必填；自动创建 owner ACL，可附带初始标签；默认状态为 `draft`。
+- `GET /api/docs` — 文档列表，支持 `page`、`pageSize`、`tag`、`author`、`status` 筛选，仅返回有权限的文档。
+- `GET /api/docs/{id}` — 文档详情，返回标签、锁定状态、文档状态、最后发布版本等。
+- `PATCH /api/docs/{id}` — 修改标题/锁定状态/文档状态/标签（标签增删差异化更新）。
 - `DELETE /api/docs/{id}` — 删除文档（实现为软删除入口），需 owner 权限。
 - `GET /api/docs/{id}/acl` — 仅文档 owner 可调用，返回完整 ACL 列表（包含用户信息、权限、邮箱、昵称等）。
 - `PUT /api/docs/{id}/acl` — 仅 owner 可调用，替换除 owner 外的 ACL 记录（需校验权限枚举：viewer、editor），防止删除或修改 owner 权限。
@@ -57,13 +57,13 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 > ✅ 任务管理模块已完成实现，支持任务的创建、查询、更新和删除功能。
 
 ### 通知中心
-- `GET /api/notifications` — 分页查询通知列表，支持 `page`、`page_size`、`unread_only` 参数过滤，返回通知详情、类型、创建时间等。
+- `GET /api/notifications` — 分页查询通知列表，支持 `page`、`page_size`、`unread_only`、`type`、`doc_id`、`start_date`、`end_date` 参数过滤，返回通知详情、类型、创建时间等。
 - `POST /api/notifications/read` — 批量标记指定通知为已读，请求体需包含 `notification_ids` 数组。
 - `GET /api/notifications/unread-count` — 获取当前用户的未读通知总数。
 
-> ✅ 通知中心模块已完成实现，支持通知查询、已读标记和未读计数功能。
+> ✅ 通知中心模块已完成实现，支持通知查询、已读标记、未读计数和完整的筛选功能（类型、文档ID、日期范围、未读状态）。
 >
-> 🔧 正在扩展：增加 `type` / `doc_id` / `start_date` / `end_date` 过滤参数以及通知偏好接口。
+> 🔧 计划扩展：通知偏好设置接口、WebSocket 实时推送。
 
 ### 全文搜索
 - `GET /api/search` — 根据关键词搜索文档，支持 `q`（查询关键词）、`page`、`page_size` 参数，返回结果按权限过滤，仅包含用户有权限访问的文档。
@@ -91,16 +91,30 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 
 ---
 
+## 已上线接口（第四阶段）
+
+### 文档导入导出 ✅
+- `POST /api/docs/import/word` — 上传 Word 文件（.docx），转换为内部格式，返回文档 ID。
+- `POST /api/docs/import/pdf` — 上传 PDF 文件，提取文本内容，返回文档 ID。
+- `POST /api/docs/import/markdown` — 上传 Markdown 文件或直接提交 Markdown 文本，转换为 HTML，返回文档 ID。
+- `GET /api/docs/{id}/export/word` — 基于文档内容导出为 Word 格式（.docx）。
+- `GET /api/docs/{id}/export/pdf` — 基于文档内容导出为 PDF 格式。
+- `GET /api/docs/{id}/export/markdown` — 基于文档内容导出为 Markdown 格式。
+
+> ✅ 文档导入导出模块已完成实现，支持 Word/PDF/Markdown 三种格式的导入导出，使用独立的 doc-converter-service 进行格式转换。
+
+### 文档状态管理 ✅
+- `PATCH /api/docs/{id}` — 支持更新文档状态（`status` 字段），可选值：`draft`（草稿）、`saved`（已保存）、`published`（已发布）、`archived`（已归档）、`locked`（已锁定）。
+- 文档保存后自动将状态从 `draft` 更新为 `saved`。
+
+> ✅ 文档状态管理已完成实现，支持手动设置状态和自动状态更新。
+
 ## 即将上线接口（第四阶段增强）
 
-### 通知过滤 & 偏好
-- `GET /api/notifications` — 增强查询参数：`type`、`doc_id`、`start_date`、`end_date`、`unread_only`。
+### 通知偏好设置
 - WebSocket 通道：在 `collab-service` 中扩展 `/notifications`，推送实时通知。
-
-### 文档导入导出
-- `POST /api/documents/import/word|pdf|markdown` — 上传文件，异步转换为内部格式，返回文档 ID 与导入记录。
-- `GET /api/documents/{id}/export/word|pdf|markdown` — 基于最新快照导出指定格式。
-- `GET /api/documents/{id}/import-jobs` — (可选) 查看导入任务状态与失败原因。
+- `GET /api/notifications/settings` — 获取通知偏好设置。
+- `PUT /api/notifications/settings` — 更新通知偏好设置。
 
 ### 文档版本增强
 - `GET /api/docs/{id}/versions/{versionId}` — 查看单个版本详情、快照元数据。

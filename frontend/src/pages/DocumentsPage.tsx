@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
-import { Document, DocumentListParams } from '../types';
+import { Document, DocumentListParams, DocumentStatus } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
 import { ImportModal } from '../components/ImportModal';
 import { ExportMenu } from '../components/ExportMenu';
+import { getDocumentStatusDisplay } from '../utils/documentStatus';
 
 export function DocumentsPage() {
   const { user } = useAuth();
@@ -19,13 +20,14 @@ export function DocumentsPage() {
   const [sortOption, setSortOption] = useState<'recent' | 'name' | 'created' | 'modified'>('recent');
   const [filterOption, setFilterOption] = useState<'all' | 'my' | 'shared' | 'recent'>('all');
   const [selectedTag, setSelectedTag] = useState<string | 'all'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<DocumentStatus | 'all'>('all');
   const [selectedDocs, setSelectedDocs] = useState<number[]>([]);
   const [showImportModal, setShowImportModal] = useState(false);
   const pageSize = 10;
 
   useEffect(() => {
     loadDocuments();
-  }, [currentPage, filterOption, selectedTag]);
+  }, [currentPage, filterOption, selectedTag, selectedStatus, user]);
 
   const loadDocuments = async () => {
     setIsLoading(true);
@@ -40,8 +42,13 @@ export function DocumentsPage() {
       if (selectedTag !== 'all') {
         params.tag = selectedTag;
       }
+      if (selectedStatus !== 'all') {
+        params.status = selectedStatus;
+      }
 
+      console.log('[DocumentsPage] 加载文档，参数:', params);
       const response = await apiClient.getDocumentList(params);
+      console.log('[DocumentsPage] 返回结果:', { total: response.total, count: response.docs.length });
       setDocuments(response.docs);
       setTotal(response.total);
       setSelectedDocs([]);
@@ -304,6 +311,21 @@ export function DocumentsPage() {
                     </option>
                   ))}
                 </select>
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => {
+                    setSelectedStatus(e.target.value as typeof selectedStatus);
+                    setCurrentPage(1);
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-custom outline-none"
+                >
+                  <option value="all">所有状态</option>
+                  <option value="draft">草稿</option>
+                  <option value="saved">已保存</option>
+                  <option value="published">已发布</option>
+                  <option value="archived">已归档</option>
+                  <option value="locked">已锁定</option>
+                </select>
               </div>
               </div>
             </div>
@@ -415,9 +437,14 @@ export function DocumentsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                          {doc.is_locked ? '已锁定' : '已保存'}
+                        {(() => {
+                          const statusDisplay = getDocumentStatusDisplay(doc.status, doc.is_locked);
+                          return (
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusDisplay.className}`}>
+                              {statusDisplay.text}
                         </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-2">
@@ -462,9 +489,14 @@ export function DocumentsPage() {
                     {formatDate(doc.updated_at)}
                   </p>
                   <div className="flex items-center justify-between">
-                    <span className="px-2 py-1 rounded-full bg-green-100 text-green-800 text-xs">
-                      {doc.is_locked ? '已锁定' : '已保存'}
+                    {(() => {
+                      const statusDisplay = getDocumentStatusDisplay(doc.status, doc.is_locked);
+                      return (
+                        <span className={`px-2 py-1 rounded-full text-xs ${statusDisplay.className}`}>
+                          {statusDisplay.text}
                     </span>
+                      );
+                    })()}
                     <div className="flex items-center gap-2">
                       <ExportMenu docId={doc.id} docTitle={doc.title} variant="dropdown" />
                       <Link

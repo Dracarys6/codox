@@ -74,11 +74,14 @@ export interface Tag {
     name: string;
 }
 
+export type DocumentStatus = 'draft' | 'saved' | 'published' | 'archived' | 'locked';
+
 export interface Document {
     id: number;
     title: string;
     owner_id: number;
     is_locked: boolean;
+    status?: DocumentStatus; // 文档状态
     last_published_version_id?: number;
     tags: Tag[] | string[]; // 后端可能返回数组或字符串数组
     created_at: string;
@@ -93,6 +96,7 @@ export interface CreateDocumentRequest {
 export interface UpdateDocumentRequest {
     title?: string;
     is_locked?: boolean;
+    status?: DocumentStatus;
     tags?: string[];
 }
 
@@ -108,6 +112,7 @@ export interface DocumentListParams {
     pageSize?: number;
     tag?: string;
     author?: number;
+    status?: DocumentStatus; // 按状态筛选
 }
 
 // ACL 相关类型

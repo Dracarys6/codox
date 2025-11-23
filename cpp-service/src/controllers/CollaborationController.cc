@@ -146,7 +146,7 @@ void CollaborationController::getBootstrap(const HttpRequestPtr& req,
         }
 
         db->execSqlAsync(
-                "SELECT dv.snapshot_url, dv.snapshot_sha256, dv.id as version_id "
+                "SELECT dv.snapshot_url, dv.snapshot_sha256, dv.id as version_id, dv.content_html, dv.content_text "
                 "FROM document d "
                 "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id "
                 "WHERE d.id = $1",
@@ -161,17 +161,49 @@ void CollaborationController::getBootstrap(const HttpRequestPtr& req,
                         return;
                     }
                     Json::Value responseJson;
+                    std::string snapshotUrl = r[0]["snapshot_url"].as<std::string>();
+
+                    // 检查是否是导入占位符 URL (import://markdown/xxx)
+                    if (snapshotUrl.find("import://") == 0) {
+                        // 对于导入的文档，返回 content_html 让前端初始化
+                        std::cerr << "Bootstrap: Found import placeholder URL: " << snapshotUrl
+                                  << ", returning content_html for frontend initialization." << std::endl;
+                        responseJson["snapshot_url"] = Json::Value::null;
+                        responseJson["sha256"] = Json::Value::null;
+                        responseJson["version_id"] = r[0]["version_id"].isNull()
+                                                             ? Json::Value::null
+                                                             : Json::Value(r[0]["version_id"].as<int>());
+                        // 返回 content_html 和 content_text，让前端可以从 HTML 初始化
+                        if (!r[0]["content_html"].isNull()) {
+                            responseJson["content_html"] = r[0]["content_html"].as<std::string>();
+                        }
+                        if (!r[0]["content_text"].isNull()) {
+                            responseJson["content_text"] = r[0]["content_text"].as<std::string>();
+                        }
+                        ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
+                        return;
+                    }
+
                     // 返回代理 URL 而不是直接的 MinIO URL，避免签名问题
-                    std::string minioUrl = r[0]["snapshot_url"].as<std::string>();
                     // 如果已经是代理 URL，直接返回；否则转换为代理 URL
-                    if (minioUrl.find("/api/collab/snapshot/") != std::string::npos) {
-                        responseJson["snapshot_url"] = minioUrl;
+                    if (snapshotUrl.find("/api/collab/snapshot/") != std::string::npos) {
+                        responseJson["snapshot_url"] = snapshotUrl;
                     } else {
                         // 转换为代理 URL
                         responseJson["snapshot_url"] = "/api/collab/snapshot/" + docIdStr + "/download";
                     }
                     responseJson["sha256"] = r[0]["snapshot_sha256"].as<std::string>();
                     responseJson["version_id"] = r[0]["version_id"].as<int>();
+                    
+                    // 优化：即使有快照 URL，也返回 content_html 和 content_text 作为后备方案
+                    // 这样当快照文件无法访问时（例如恢复的旧版本），前端仍可以从 HTML 内容初始化
+                    if (!r[0]["content_html"].isNull() && !r[0]["content_html"].as<std::string>().empty()) {
+                        responseJson["content_html"] = r[0]["content_html"].as<std::string>();
+                    }
+                    if (!r[0]["content_text"].isNull() && !r[0]["content_text"].as<std::string>().empty()) {
+                        responseJson["content_text"] = r[0]["content_text"].as<std::string>();
+                    }
+                    
                     ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                     return;
                 },
