@@ -1,16 +1,16 @@
 # 协作服务 (collab-service)
 
-基于 Yjs 和 WebSocket 的实时协作文档服务，为前端提供多人实时编辑能力，并提供文档聊天室的实时推送通道。
+基于 Yjs 和 WebSocket 的实时协作文档服务，为前端提供多人实时编辑能力，并负责通知通道。
 
 ## 📋 功能简介
 
-本服务实现了 Yjs 的 WebSocket 网关，同时也承担聊天推送通道，负责：
+本服务实现了 Yjs 的 WebSocket 网关，同时承担通知推送通道，负责：
 
 - 处理前端 WebSocket 连接
 - 管理文档的实时协作状态
 - 同步多个客户端的编辑操作
 - 支持文档的实时协作编辑
-- 转发文档聊天室消息 / typing / 已读等事件并广播给在线用户
+- 维持通知 WebSocket，供后端主动推送事件
 
 ## 🛠️ 技术栈
 
@@ -61,9 +61,7 @@ node dist/server.js
 | 变量 | 说明 | 默认值 |
 | --- | --- | --- |
 | `PORT` | WebSocket 服务端口 | `1234` |
-| `COLLAB_JWT_SECRET` | 用于验证协作令牌的 JWT Secret（必须与 C++ 服务一致） | `default-secret` |
-| `CHAT_JWT_SECRET` | 用于验证聊天 Access Token 的 JWT Secret（通常与 C++ 服务 `jwt_secret` 保持一致） | `同 COLLAB_JWT_SECRET` |
-| `CHAT_API_BASE` | 调用 C++ Chat API 的地址 | `http://localhost:8080/api` |
+| `COLLAB_JWT_SECRET` | 用于验证协作令牌与通知令牌的 JWT Secret（必须与 C++ 服务一致） | `default-secret` |
 
 ```bash
 COLLAB_JWT_SECRET="your-secret" npm start
@@ -84,54 +82,6 @@ ws://localhost:1234?docId=123&token=your-jwt-token
 - `docId`: 文档 ID（必需）
 - `token`: 协作 JWT 令牌（必需，服务端会验证）
 
-## 💬 聊天 WebSocket 协议
-
-### 连接方式
-
-```
-ws://localhost:1234/chat?room_id=28&token=your-access-token
-```
-
-### 连接参数
-
-- `room_id`: 聊天室 ID（必需）
-- `token`: 用户访问令牌（与前端 HTTP API 相同）
-
-### 事件
-
-- `join`: 连接建立或其他成员加入
-- `message`: 聊天消息（服务端调用 C++ API 落库后广播）
-- `typing`: 输入中通知
-- `read`: 已读通知
-
-客户端发送示例：
-
-```json
-{ "type": "message", "room_id": 28, "content": "Hello team" }
-```
-
-服务端会将消息转发至 `POST /api/chat/rooms/{room_id}/messages`，成功后广播保存结果。
-
-### 使用示例
-
-前端连接示例（来自 `frontend/src/components/DocumentEditor.tsx`）：
-
-```typescript
-const wsUrl = `${import.meta.env.VITE_WS_URL}?docId=${docId}&token=${token}`;
-const ws = new WebSocket(wsUrl);
-
-// Yjs 会自动处理消息同步
-```
-
-聊天连接示例（来自 `frontend/src/hooks/useChatWebSocket.ts`）：
-
-```typescript
-const wsUrl = new URL(import.meta.env.VITE_CHAT_WS_URL!);
-wsUrl.searchParams.set('room_id', String(roomId));
-wsUrl.searchParams.set('token', accessToken);
-const socket = new WebSocket(wsUrl.toString());
-socket.send(JSON.stringify({ type: 'message', room_id: roomId, content: 'hello' }));
-```
 
 ## 🔧 配置说明
 
@@ -144,14 +94,11 @@ socket.send(JSON.stringify({ type: 'message', room_id: roomId, content: 'hello' 
 
 ### 前端配置
 
-前端需要在 `.env` 文件中配置两个 WebSocket 地址：
+前端需要在 `.env` 文件中配置协作 WebSocket 地址：
 
 ```env
-# 协作 WebSocket（Yjs）
+# 协作 WebSocket（Yjs + 通知）
 VITE_WS_URL=ws://localhost:1234
-
-# 聊天 WebSocket
-VITE_CHAT_WS_URL=ws://localhost:1234/chat
 ```
 
 ## 🧪 测试
@@ -169,13 +116,7 @@ VITE_CHAT_WS_URL=ws://localhost:1234/chat
    wscat -c "ws://localhost:1234?docId=xxx&token=YOUR_ACCESS_TOKEN"
    ```
 
-3. 使用 wscat 测试聊天连接：
-   ```bash
-   wscat -c "ws://localhost:1234/chat?room_id=xxx&token=YOUR_ACCESS_TOKEN"
-   > {"type":"message","room_id":28,"content":"Hello from wscat"}
-   ```
-
-4. 在前端打开多个浏览器标签页，编辑同一文档并在聊天面板发送消息，验证实时同步
+3. 在前端打开多个浏览器标签页，编辑同一文档，验证实时同步和通知推送
 
 ### 集成测试
 
@@ -201,7 +142,7 @@ PORT=3000 npm start
 ### WebSocket 连接失败
 
 - 检查服务是否正在运行
-- 检查前端 `.env` 中的 `VITE_WS_URL`（协作） 与 `VITE_CHAT_WS_URL`（聊天）配置
+- 检查前端 `.env` 中的 `VITE_WS_URL`（协作）配置
 - 检查防火墙设置
 - 查看浏览器控制台的错误信息
 
@@ -213,9 +154,9 @@ PORT=3000 npm start
 
 ## 🔒 安全注意事项
 
-- 协作 WebSocket 必须同时携带 `docId` 与 `token`，聊天 WebSocket 必须携带 `room_id` 与 `token`
-- `server.ts` 会使用 `COLLAB_JWT_SECRET` 验证协作令牌，使用 `CHAT_JWT_SECRET` 验证聊天 access token；协作令牌需要 `type='collab'` 且 `doc_id` 与 `docId` 一致
-- 聊天令牌会解析 `user_id`，若用户不在聊天室内，C++ API 会返回 `403`
+- 协作/通知 WebSocket 必须携带合法的 `docId`（协作）或 `token`（通知）
+- `server.ts` 会使用 `COLLAB_JWT_SECRET` 验证令牌；协作令牌需要 `type='collab'` 且 `doc_id` 与 `docId` 一致
+- 通知令牌会解析 `user_id`，若字段缺失或无效会直接拒绝连接
 - 验证失败会返回 `1008 Policy Violation` 并拒绝连接
 - 建议将 `COLLAB_JWT_SECRET` 配置为与 C++ 服务相同的 `jwt_secret`
 - 如需进一步加固，可在验证成功后向 C++ 服务发起二次权限校验

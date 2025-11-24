@@ -2,11 +2,19 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Collaboration from '@tiptap/extension-collaboration';
+import Underline from '@tiptap/extension-underline';
+import Link from '@tiptap/extension-link';
+import Image from '@tiptap/extension-image';
+import Highlight from '@tiptap/extension-highlight';
+import TextAlign from '@tiptap/extension-text-align';
+import { TextStyle } from '@tiptap/extension-text-style';
+import Color from '@tiptap/extension-color';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import { apiClient } from '../api/client';
 import { calculateSHA256, uploadSnapshot } from '../utils/snapshot';
+import { RichTextToolbar } from './RichTextToolbar';
 
 interface DocumentEditorProps {
     docId: number;
@@ -47,6 +55,25 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
                 StarterKit,
                 Placeholder.configure({
                     placeholder: '开始输入文档内容...',
+                }),
+                Underline,
+                Link.configure({
+                    protocols: ['http', 'https', 'mailto'],
+                    autolink: true,
+                    linkOnPaste: true,
+                    openOnClick: false,
+                }),
+                Image.configure({
+                    allowBase64: true,
+                    HTMLAttributes: {
+                        class: 'my-4 rounded-lg max-w-full shadow-sm',
+                    },
+                }),
+                Highlight,
+                TextStyle,
+                Color,
+                TextAlign.configure({
+                    types: ['heading', 'paragraph'],
                 }),
                 ...(collabResources
                     ? [
@@ -328,7 +355,7 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
     }, [editor, collabResources, docId, onSave, onSaveReady]);
 
     return (
-        <div className="border-2 border-blue-300/60 rounded-2xl bg-white shadow-xl overflow-hidden">
+        <div className="w-full max-w-6xl mx-auto border border-blue-200/70 rounded-3xl bg-white shadow-2xl overflow-hidden">
             {/* 连接状态提示 */}
             <div className="px-6 py-4 border-b-2 border-gray-200/60 bg-gradient-to-r from-gray-50/50 to-blue-50/30">
                 {!isConnected ? (
@@ -348,13 +375,14 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
                     </div>
                 )}
             </div>
+            <RichTextToolbar editor={editor} />
             {/* 编辑器内容区域 */}
-            <div className="bg-white border-t-2 border-gray-200/60 focus-within:ring-4 focus-within:ring-blue-200/50 focus-within:border-blue-400 transition-all duration-300">
-                <div className="min-h-[500px] p-8">
+            <div className="bg-white border-t border-gray-100 focus-within:ring-4 focus-within:ring-blue-200/50 focus-within:border-blue-400 transition-all duration-300">
+                <div className="min-h-[65vh] sm:min-h-[75vh] px-6 py-8 sm:px-10">
                     <style>{`
                         .ProseMirror {
                             outline: none;
-                            min-height: 500px;
+                            min-height: 65vh;
                             font-size: 16px;
                             line-height: 1.8;
                             color: #1f2937;

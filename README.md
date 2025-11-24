@@ -7,11 +7,11 @@
 
 当前仓库涵盖：
 
-- `cpp-service`：Drogon + PostgreSQL 的主业务 API（文档、权限、评论、任务、通知、搜索、实时通讯、导入导出等）
-- `collab-service`：Yjs WebSocket 网关，负责实时协作与聊天室数据通道
+- `cpp-service`：Drogon + PostgreSQL 的主业务 API（文档、权限、评论、任务、通知、搜索、导入导出等）
+- `collab-service`：Yjs WebSocket 网关，负责实时协作与通知推送通道
 - `doc-converter-service`：Node.js 文档转换服务，提供 Word/PDF/Markdown 格式转换
-- `frontend`：Tiptap 编辑器 + React 前端，集成协作、通知、任务、聊天面板与导入导出功能
-- `docs`：逐阶段的设计 / 验收指南（第四阶段聚焦实时通讯、通知增强、导入导出与用户管理）
+- `frontend`：Tiptap 编辑器 + React 前端，集成协作、通知、任务与导入导出功能
+- `docs`：逐阶段的设计 / 验收指南（第四阶段聚焦通知增强、导入导出与用户管理）
 
 ### 核心功能&进度
 
@@ -20,7 +20,7 @@
 - ✅ **实时协作**：Yjs + y-websocket、协作令牌、快照回调、引导快照
 - ✅ **评论 / 任务 / 通知**：后端接口 + 前端侧边栏/看板/通知中心
 - ✅ **全文搜索**：Meilisearch 索引同步 + 搜索页
-- ✅ **实时通讯**：ChatController、聊天室/消息 API、WebSocket 聊天组件
+- ⛔️ **实时通讯**：原计划的聊天室/消息模块已取消，相应 API 与前端面板已移除
 - ✅ **用户搜索**：支持按ID、邮箱、昵称搜索用户，用于 ACL 权限管理
 - ✅ **文档导入导出**：Word/PDF/Markdown 格式导入导出，独立转换服务
 - ✅ **文档状态管理**：支持草稿、已保存、已发布、已归档、已锁定等状态，保存后自动更新状态
@@ -248,7 +248,6 @@ VITE_WS_URL=ws://localhost:1234
 
 ### 其他
 - `GET /api/search` - 全文搜索
-- `GET /api/chat/rooms` - 聊天室列表
 
 详细 API 文档请参考：[API 设计文档](./docs/API-01-API设计.md)
 
@@ -418,7 +417,7 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 - **[第一阶段开发指南](./docs/PHASE-01-用户认证开发指南.md)** - 用户认证与基础功能 ✅
 - **[第二阶段开发指南](./docs/PHASE-02-文档管理开发指南.md)** - 文档 CRUD、权限管理与版本控制 ✅
 - **[第三阶段开发指南](./docs/PHASE-03-协作功能开发指南.md)** - 实时协作、评论、任务、通知、搜索 ✅
-- **[第四阶段开发指南](./docs/PHASE-04-功能完善开发指南.md)** - 实时通讯、通知增强、导入导出、版本与用户管理
+- **[第四阶段开发指南](./docs/PHASE-04-功能完善开发指南.md)** - 通知增强、导入导出、版本与用户管理
 
 ### 操作指南
 - **[项目启动指南](./docs/GUIDE-01-项目启动指南.md)** - 项目启动和运行指南
@@ -478,7 +477,7 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 
 - [x] ACL 巩固 & 前端联调（`GET/PUT /api/docs/{id}/acl`、`AclManager`）
 - [x] 用户搜索功能（`GET /api/users/search`、ACL 管理集成）
-- [x] 文档实时通讯（ChatController、WebSocket、未读同步）
+- ⛔️ 文档实时通讯（原聊天/未读同步方案已取消，相关代码与文档已移除）
 - [x] 文档导入导出功能（Word/PDF/Markdown，doc-converter-service，前后端完整实现）✅
 - [x] 文档状态管理（自动状态更新、状态筛选）
 - [x] 主页统计优化（协作文档、需要关注文档）

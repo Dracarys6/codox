@@ -8,10 +8,9 @@ import { DocumentEditor } from '../components/DocumentEditor';
 import { CommentPanel } from '../components/CommentPanel';
 import { TaskPanel } from '../components/TaskPanel';
 import { AclManager } from '../components/AclManager';
-import { ChatPanel } from '../components/chat/ChatPanel';
 import { ExportMenu } from '../components/ExportMenu';
 
-type SideTabKey = 'info' | 'comments' | 'tasks' | 'acl' | 'chat';
+type SideTabKey = 'info' | 'comments' | 'tasks' | 'acl';
 
 export function EditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -284,10 +283,10 @@ export function EditorPage() {
       </header>
 
       {/* 主内容 */}
-      <main className="flex-grow bg-gray-50">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-10">
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.2fr)_350px] gap-6 items-start">
-            <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 min-h-[calc(100vh-260px)]">
+      <main className="flex-grow bg-gradient-to-b from-gray-50 via-white to-gray-100">
+        <div className="mx-auto w-full max-w-[1500px] py-8 px-4 sm:px-6 lg:px-12">
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.65fr)_360px] gap-8 items-start">
+            <section className="bg-transparent rounded-2xl min-h-[calc(100vh-220px)]">
               <DocumentEditor
                 key={`editor-${docId}-${editorKey}`}
                 docId={docId}
@@ -322,7 +321,6 @@ export function EditorPage() {
                   { key: 'comments', label: '评论', icon: 'fa fa-comments' },
                   { key: 'tasks', label: '任务', icon: 'fa fa-tasks' },
                   { key: 'acl', label: '权限', icon: 'fa fa-lock' },
-                  { key: 'chat', label: '聊天', icon: 'fa fa-comments-o' },
                 ] as { key: SideTabKey; label: string; icon: string }[]).map((tab) => (
                   <button
                     key={tab.key}
@@ -553,12 +551,6 @@ export function EditorPage() {
                       onLoaded={handleAclLoaded}
                       isOwner={isOwner}
                     />
-                  </div>
-                )}
-
-                {activeTab === 'chat' && (
-                  <div className="max-h-[calc(100vh-360px)] overflow-y-auto pr-1">
-                    <ChatPanel docId={docId} />
                   </div>
                 )}
               </div>

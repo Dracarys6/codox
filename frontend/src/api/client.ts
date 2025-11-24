@@ -24,13 +24,6 @@ import {
     CreateVersionResponse,
     RestoreVersionResponse,
     VersionDiffResponse,
-    ChatRoom,
-    ChatRoomListParams,
-    ChatRoomListResponse,
-    CreateChatRoomRequest,
-    ChatMessageListResponse,
-    SendChatMessageRequest,
-    ChatMessage,
     NotificationListResponse,
     NotificationFilterParams,
     AdminUser,
@@ -130,7 +123,6 @@ class ApiClient {
     private clearAuth() {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');
-        localStorage.removeItem('chat_token');
         localStorage.removeItem('user');
     }
 
@@ -153,8 +145,6 @@ class ApiClient {
         // 保存 Token 和用户信息
         localStorage.setItem('access_token', response.data.access_token);
         localStorage.setItem('refresh_token', response.data.refresh_token);
-        const chatToken = response.data.chat_token || response.data.access_token;
-        localStorage.setItem('chat_token', chatToken);
         localStorage.setItem('user', JSON.stringify(response.data.user));
 
         return response.data;
@@ -166,10 +156,7 @@ class ApiClient {
     async refreshToken(data: RefreshTokenRequest): Promise<RefreshTokenResponse> {
         const response = await this.client.post<RefreshTokenResponse>('/auth/refresh', data);
 
-        // 更新 access_token / chat_token
         localStorage.setItem('access_token', response.data.access_token);
-        const chatToken = response.data.chat_token || response.data.access_token;
-        localStorage.setItem('chat_token', chatToken);
 
         return response.data;
     }
@@ -589,89 +576,6 @@ class ApiClient {
     async searchDocuments(query: string, params?: { page?: number; page_size?: number }): Promise<{ hits: any[]; total: number }> {
         const response = await this.client.get<{ hits: any[]; total: number }>('/search', {
             params: { q: query, ...params },
-        });
-        return response.data;
-    }
-
-    // ========== 聊天相关 API ==========
-
-    /**
-     * 获取聊天室列表
-     */
-    async getChatRooms(params?: ChatRoomListParams): Promise<ChatRoomListResponse> {
-        const response = await this.client.get<ChatRoomListResponse>('/chat/rooms', { params });
-        return response.data;
-    }
-
-    /**
-     * 创建聊天室
-     */
-    async createChatRoom(data: CreateChatRoomRequest): Promise<ChatRoom> {
-        const response = await this.client.post<ChatRoom>('/chat/rooms', data);
-        return response.data;
-    }
-
-    /**
-     * 添加聊天室成员
-     */
-    async addChatRoomMembers(roomId: number, userIds: number[]): Promise<{ message: string }> {
-        const response = await this.client.post<{ message: string }>(`/chat/rooms/${roomId}/members`, {
-            user_ids: userIds,
-        });
-        return response.data;
-    }
-
-    /**
-     * 获取聊天室消息
-     */
-    async getChatMessages(
-        roomId: number,
-        params?: { page?: number; page_size?: number; before_id?: number }
-    ): Promise<ChatMessageListResponse> {
-        const response = await this.client.get<ChatMessageListResponse>(`/chat/rooms/${roomId}/messages`, {
-            params,
-        });
-        return response.data;
-    }
-
-    /**
-     * 发送聊天消息
-     */
-    async sendChatMessage(roomId: number, data: SendChatMessageRequest): Promise<ChatMessage> {
-        const response = await this.client.post<ChatMessage>(`/chat/rooms/${roomId}/messages`, data);
-        return response.data;
-    }
-
-    /**
-     * 标记消息为已读
-     */
-    async markChatMessageRead(messageId: number): Promise<{ message: string }> {
-        const response = await this.client.post<{ message: string }>(`/chat/messages/${messageId}/read`, {});
-        return response.data;
-    }
-
-    /**
-     * 上传聊天文件
-     */
-    async uploadChatFile(roomId: number, formData: FormData): Promise<ChatMessage> {
-        const response = await this.client.post<ChatMessage>(
-            `/chat/rooms/${roomId}/files`,
-            formData,
-            {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            }
-        );
-        return response.data;
-    }
-
-    /**
-     * 下载聊天文件
-     */
-    async downloadChatFile(messageId: number): Promise<Blob> {
-        const response = await this.client.get(`/chat/messages/${messageId}/file`, {
-            responseType: 'blob',
         });
         return response.data;
     }

@@ -119,44 +119,7 @@ CREATE TABLE notification (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 实时通讯
-CREATE TABLE chat_room (
-  id BIGSERIAL PRIMARY KEY,
-  name VARCHAR(255),
-  type VARCHAR(20) NOT NULL,         -- direct / group / document
-  doc_id BIGINT REFERENCES document(id) ON DELETE SET NULL,
-  created_by BIGINT NOT NULL REFERENCES "user"(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE chat_room_member (
-  id BIGSERIAL PRIMARY KEY,
-  room_id BIGINT NOT NULL REFERENCES chat_room(id) ON DELETE CASCADE,
-  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  last_read_at TIMESTAMPTZ,
-  UNIQUE(room_id, user_id)
-);
-
-CREATE TABLE chat_message (
-  id BIGSERIAL PRIMARY KEY,
-  room_id BIGINT NOT NULL REFERENCES chat_room(id) ON DELETE CASCADE,
-  sender_id BIGINT NOT NULL REFERENCES "user"(id),
-  content TEXT,
-  message_type VARCHAR(20) NOT NULL DEFAULT 'text',
-  file_url TEXT,
-  reply_to BIGINT REFERENCES chat_message(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE chat_message_read (
-  id BIGSERIAL PRIMARY KEY,
-  message_id BIGINT NOT NULL REFERENCES chat_message(id) ON DELETE CASCADE,
-  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(message_id, user_id)
-);
+-- 实时通讯（已取消，相关数据表不再创建）
 
 -- 通知偏好
 CREATE TABLE notification_setting (
@@ -189,8 +152,6 @@ CREATE INDEX idx_doc_tag_tag ON doc_tag(tag_id);
 CREATE INDEX idx_comment_doc_created ON comment(doc_id, created_at DESC);
 CREATE INDEX idx_task_doc_status ON task(doc_id, status);
 CREATE INDEX idx_notification_user_created ON notification(user_id, created_at DESC);
-CREATE INDEX idx_chat_room_member ON chat_room_member(room_id, user_id);
-CREATE INDEX idx_chat_message_room_created ON chat_message(room_id, created_at DESC);
 CREATE INDEX idx_notification_setting_user_type ON notification_setting(user_id, notification_type);
 CREATE INDEX idx_user_activity_daily_date ON user_activity_daily(activity_date);
 ```
@@ -655,77 +616,9 @@ Authorization: Bearer <access_token>
 }
 ```
 
-### 实时通讯 API
+### 实时通讯 API（已取消）
 
-#### 创建聊天室
-
-```http
-POST /api/chat/rooms
-Authorization: Bearer <access_token>
-Content-Type: application/json
-
-{
-  "name": "项目 A 讨论",
-  "type": "document",        // direct | group | document
-  "doc_id": 42,
-  "member_ids": [2, 3, 4]
-}
-```
-
-- 验证调用者权限；文档型聊天室会校验 `doc_acl`
-- 自动将创建者加入 `chat_room_member`
-
-#### 获取聊天室列表
-
-```http
-GET /api/chat/rooms?page=1&page_size=20
-Authorization: Bearer <access_token>
-```
-
-响应包含 last_message、last_message_time、unread_count。
-
-#### 发送消息
-
-```http
-POST /api/chat/rooms/{id}/messages
-Authorization: Bearer <access_token>
-Content-Type: application/json
-
-{
-  "content": "今晚 8 点上线",
-  "message_type": "text",
-  "reply_to": 123
-}
-```
-
-- 支持文件消息（`file_url` 字段，复用 MinIO）
-- 成功后返回消息 ID、时间戳、回执
-
-#### 获取消息历史 / 游标分页
-
-```http
-GET /api/chat/rooms/{id}/messages?page=1&page_size=50&before_id=456
-Authorization: Bearer <access_token>
-```
-
-- 验证调用者在聊天室内
-- `before_id` 提供游标翻页
-
-#### 标记消息已读
-
-```http
-POST /api/chat/messages/{id}/read
-Authorization: Bearer <access_token>
-```
-
-- 更新 `chat_message_read` 与成员 `last_read_at`
-- 失败不影响主流程
-
-#### WebSocket 协议（collab-service）
-
-- `ws://<collab-service>/chat?room_id=xx&token=yy`
-- 支持事件：`join`、`message`、`typing`、`read`
-- 通过 HTTP API 完成持久化，再广播给房间成员
+> 原计划提供的聊天室/消息/已读/WebSocket 接口已移除，不再对外暴露 `POST /api/chat/*` 与 `/ws/chat` 相关能力。
 
 ### 通知增强 & 偏好设置 API
 
@@ -756,12 +649,10 @@ Content-Type: application/json
 - `notification_type` 例如 `comment`, `task_assigned`, `permission_changed`
 - 后端在发送通知时读取设置并决定投递渠道
 
-### 文档导入导出 API（规划）
+### 文档导入导出 API
 
 | Endpoint | 方法 | 说明 |
 | -------- | ---- | ---- |
-| `/api/documents/import/word` | POST (multipart) | 上传 Word，转换为内部格式后创建文档 |
-| `/api/documents/import/pdf` | POST (multipart) | 上传 PDF，提取文本/图片 |
 | `/api/documents/import/markdown` | POST (multipart) | 上传 Markdown，转换为 ProseMirror JSON |
 | `/api/documents/{id}/export/word` | GET | 基于最新快照导出 Word |
 | `/api/documents/{id}/export/pdf` | GET | 导出 PDF |
@@ -1222,27 +1113,9 @@ Client -> POST /api/collab/token
         -> 触发发布流程
 ```
 
-### 6. 实时通讯消息流程
+### 6. 实时通讯消息流程（已取消）
 
-```.
-Client -> POST /api/chat/rooms/{id}/messages
-  -> JwtAuthFilter（校验用户属于房间）
-    -> ChatController::sendMessage
-      -> 写入 chat_message / chat_message_read
-        -> 返回消息 ID + 时间戳
-          -> 调用 collab-service WebSocket 广播 {type:"message", ...}
-            -> 其他客户端 append 消息并更新未读
-```
-
-断线重连：
-
-```.
-Client -> WebSocket reconnect
-  -> chat-handler 校验 token + room_id
-    -> 重新加入房间
-      -> HTTP 拉取历史消息补齐 gap
-        -> 更新 last_read_at，清空未读
-```
+> 聊天室消息写入/广播/断线重连流程已从方案中删除，不再通过 `ChatController` 或 `chat-handler` 提供支持。
 
 ---
 

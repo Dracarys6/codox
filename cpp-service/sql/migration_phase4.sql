@@ -1,64 +1,10 @@
 -- ============================================
 -- 第四阶段数据库迁移脚本
--- 功能：实时通讯、通知增强
+-- 功能：通知增强
 -- ============================================
 
 -- ============================================
--- 1. 实时通讯模块
--- ============================================
-
--- 聊天室表
-CREATE TABLE chat_room (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(255),
-    type VARCHAR(20) NOT NULL,  -- 'direct', 'group', 'document'
-    doc_id BIGINT REFERENCES document(id) ON DELETE CASCADE,  -- 文档关联聊天室（可选）
-    created_by BIGINT REFERENCES "user"(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 聊天室成员表
-CREATE TABLE chat_room_member (
-    id BIGSERIAL PRIMARY KEY,
-    room_id BIGINT NOT NULL REFERENCES chat_room(id) ON DELETE CASCADE,
-    user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_read_at TIMESTAMPTZ,
-    UNIQUE(room_id, user_id)
-);
-
--- 聊天消息表
-CREATE TABLE chat_message (
-    id BIGSERIAL PRIMARY KEY,
-    room_id BIGINT NOT NULL REFERENCES chat_room(id) ON DELETE CASCADE,
-    sender_id BIGINT NOT NULL REFERENCES "user"(id),
-    content TEXT,
-    message_type VARCHAR(20) NOT NULL DEFAULT 'text',  -- 'text', 'file', 'image', etc.
-    file_url VARCHAR(500),  -- 文件消息的 URL（可选）
-    reply_to BIGINT REFERENCES chat_message(id),  -- 回复消息（可选）
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 消息已读状态表
-CREATE TABLE chat_message_read (
-    id BIGSERIAL PRIMARY KEY,
-    message_id BIGINT NOT NULL REFERENCES chat_message(id) ON DELETE CASCADE,
-    user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-    read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(message_id, user_id)
-);
-
--- 聊天相关索引
-CREATE INDEX idx_chat_room_doc ON chat_room(doc_id);
-CREATE INDEX idx_chat_room_member_room ON chat_room_member(room_id);
-CREATE INDEX idx_chat_room_member_user ON chat_room_member(user_id);
-CREATE INDEX idx_chat_message_room_created ON chat_message(room_id, created_at DESC);
-CREATE INDEX idx_chat_message_sender ON chat_message(sender_id);
-CREATE INDEX idx_chat_message_read_user ON chat_message_read(user_id);
-
--- ============================================
--- 2. 通知系统增强
+-- 通知系统增强
 -- ============================================
 
 -- 通知设置表
@@ -90,7 +36,6 @@ CREATE INDEX idx_notification_setting_user ON notification_setting(user_id);
 -- SELECT table_name 
 -- FROM information_schema.tables 
 -- WHERE table_schema = 'public' 
---   AND table_name IN ('chat_room', 'chat_room_member', 'chat_message', 'chat_message_read', 
---                      'notification_setting')
+--   AND table_name IN ('notification_setting')
 -- ORDER BY table_name;
 

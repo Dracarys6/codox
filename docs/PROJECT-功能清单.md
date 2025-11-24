@@ -84,15 +84,8 @@
 - [x] 搜索结果高亮
 - [x] 前端搜索页面
 
-#### 11. 实时通讯
-- [x] 聊天室创建（direct、group、document）
-- [x] 聊天室列表
-- [x] 消息发送/接收
-- [x] 消息已读状态
-- [x] 文件上传/下载
-- [x] 消息回复
-- [x] WebSocket 实时推送
-- [x] 前端聊天组件
+#### 11. 实时通讯（已取消）
+- ⛔ 聊天室/消息/WebSocket 能力已移出交付范围
 
 #### 12. 文档导入导出
 - [x] Word 文档导入（.docx 转 HTML）
@@ -163,7 +156,7 @@
 - 任务相关：4 个
 - 通知相关：3 个
 - 搜索相关：1 个
-- 聊天相关：7 个
+- 聊天相关：0（已取消）
 
 ### 数据库表
 - 用户表：`user`、`user_profile`
@@ -172,7 +165,7 @@
 - 评论表：`comment`
 - 任务表：`task`
 - 通知表：`notification`
-- 聊天表：`chat_room`、`chat_message`、`chat_room_member`、`chat_message_read`
+- 聊天表：已取消
 
 ### 服务组件
 - **cpp-service**：C++ 后端 API 服务（端口 8080）
