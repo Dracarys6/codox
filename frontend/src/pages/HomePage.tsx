@@ -7,6 +7,7 @@ import { NotificationBell } from '../components/NotificationBell';
 import { getDocumentStatusDisplay } from '../utils/documentStatus';
 import { ImportModal } from '../components/ImportModal';
 import { ExportMenu } from '../components/ExportMenu';
+import { FeedbackSurveyCard } from '../components/feedback/FeedbackSurveyCard';
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
@@ -556,6 +557,11 @@ export function HomePage() {
               <h3 className="font-medium text-gray-900">搜索文档</h3>
               <p className="text-sm text-gray-500 mt-1">快速查找文档内容</p>
             </Link>
+          </div>
+
+          {/* 用户满意度调研 */}
+          <div className="mb-10">
+            <FeedbackSurveyCard />
           </div>
 
           {/* 最近文档 */}

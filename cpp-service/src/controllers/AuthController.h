@@ -11,12 +11,16 @@ class AuthController : public HttpController<AuthController> {
 public:
     //路由绑定声明 (METHOD_LIST_BEGIN 到 METHOD_LIST_END之间)
     METHOD_LIST_BEGIN
-        //注册接口：POST /api/auth/register
+        // 注册接口：POST /api/auth/register
         ADD_METHOD_TO(AuthController::registerHandler, "/api/auth/register", Post);
-    //登录接口：POST /api/auth/login
+        // 登录接口：POST /api/auth/login
     ADD_METHOD_TO(AuthController::loginHandler, "/api/auth/login", Post);
-    //刷新token
+        // 刷新 token
     ADD_METHOD_TO(AuthController::refreshHandler, "/api/auth/refresh", Post);
+        // 忘记密码：POST /api/auth/password/forgot
+        ADD_METHOD_TO(AuthController::forgotPasswordHandler, "/api/auth/password/forgot", Post);
+        // 重置密码：POST /api/auth/password/reset
+        ADD_METHOD_TO(AuthController::resetPasswordHandler, "/api/auth/password/reset", Post);
     METHOD_LIST_END
 
         void registerHandler(const HttpRequestPtr& req,
@@ -26,5 +30,11 @@ public:
         std::function<void(const HttpResponsePtr&)>&& callback);
 
     void refreshHandler(const HttpRequestPtr& req,
+        std::function<void(const HttpResponsePtr&)>&& callback);
+
+    void forgotPasswordHandler(const HttpRequestPtr& req,
+        std::function<void(const HttpResponsePtr&)>&& callback);
+
+    void resetPasswordHandler(const HttpRequestPtr& req,
         std::function<void(const HttpResponsePtr&)>&& callback);
 };

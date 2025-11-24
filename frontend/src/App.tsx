@@ -12,6 +12,9 @@ import { VersionManagementPage } from './pages/VersionManagementPage';
 import { ToastContainer, toast } from './components/ui/Toast';
 import { useEffect, useState } from 'react';
 import './index.css';
+import { AdminUsersPage } from './pages/AdminUsersPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 
 // 受保护的路由组件
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -27,6 +30,28 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <i className="fa fa-spinner fa-spin text-4xl text-primary"></i>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role !== 'admin') {
+    return <Navigate to="/home" replace />;
   }
 
   return <>{children}</>;
@@ -53,6 +78,8 @@ function App() {
           <Route path="/" element={<Navigate to="/home" replace />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route
             path="/home"
             element={
@@ -107,6 +134,14 @@ function App() {
               <ProtectedRoute>
                 <VersionManagementPage />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <AdminRoute>
+                <AdminUsersPage />
+              </AdminRoute>
             }
           />
           <Route path="*" element={<Navigate to="/login" replace />} />

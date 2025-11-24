@@ -31,7 +31,8 @@ void UserController::getMe(const HttpRequestPtr& req, std::function<void(const H
     // 使用字符串参数绑定，然后让 PostgreSQL 自动转换类型
     // 这解决了 Drogon 与 PostgreSQL 在整数参数绑定时的兼容性问题
     db->execSqlAsync(
-            "SELECT u.id, u.email, u.role, p.nickname, p.avatar_url, p.bio "
+            "SELECT u.id, u.email, u.role, u.status, u.is_locked, u.remark, u.last_login_at, u.created_at, "
+            "u.updated_at, p.nickname, p.avatar_url, p.bio "
             "FROM \"user\" u "
             "LEFT JOIN user_profile p ON u.id = p.user_id "
             "WHERE u.id = $1::integer",
@@ -45,6 +46,16 @@ void UserController::getMe(const HttpRequestPtr& req, std::function<void(const H
                 responseJson["id"] = r[0]["id"].as<int>();
                 responseJson["email"] = r[0]["email"].as<std::string>();
                 responseJson["role"] = r[0]["role"].as<std::string>();
+                responseJson["status"] = r[0]["status"].as<std::string>();
+                responseJson["is_locked"] = r[0]["is_locked"].as<bool>();
+                if (!r[0]["remark"].isNull()) {
+                    responseJson["remark"] = r[0]["remark"].as<std::string>();
+                }
+                if (!r[0]["last_login_at"].isNull()) {
+                    responseJson["last_login_at"] = r[0]["last_login_at"].as<std::string>();
+                }
+                responseJson["created_at"] = r[0]["created_at"].as<std::string>();
+                responseJson["updated_at"] = r[0]["updated_at"].as<std::string>();
 
                 // 构建嵌套的 profile 对象
                 Json::Value profileJson;
@@ -123,7 +134,8 @@ void UserController::updateMe(const HttpRequestPtr& req, std::function<void(cons
                 }
 
                 db2->execSqlAsync(
-                        "SELECT u.id, u.email, u.role, p.nickname, p.avatar_url, p.bio "
+                        "SELECT u.id, u.email, u.role, u.status, u.is_locked, u.remark, u.last_login_at, u.created_at, "
+                        "u.updated_at, p.nickname, p.avatar_url, p.bio "
                         "FROM \"user\" u "
                         "LEFT JOIN user_profile p ON u.id = p.user_id "
                         "WHERE u.id = $1::integer",
@@ -137,6 +149,16 @@ void UserController::updateMe(const HttpRequestPtr& req, std::function<void(cons
                             responseJson["id"] = r2[0]["id"].as<int>();
                             responseJson["email"] = r2[0]["email"].as<std::string>();
                             responseJson["role"] = r2[0]["role"].as<std::string>();
+                            responseJson["status"] = r2[0]["status"].as<std::string>();
+                            responseJson["is_locked"] = r2[0]["is_locked"].as<bool>();
+                            if (!r2[0]["remark"].isNull()) {
+                                responseJson["remark"] = r2[0]["remark"].as<std::string>();
+                            }
+                            if (!r2[0]["last_login_at"].isNull()) {
+                                responseJson["last_login_at"] = r2[0]["last_login_at"].as<std::string>();
+                            }
+                            responseJson["created_at"] = r2[0]["created_at"].as<std::string>();
+                            responseJson["updated_at"] = r2[0]["updated_at"].as<std::string>();
 
                             Json::Value profileJson;
                             profileJson["nickname"] =
@@ -295,7 +317,8 @@ void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(c
         std::string listQuery;
         if (isNumericQuery) {
             listQuery =
-                    "SELECT u.id, u.email, u.role, p.nickname, p.avatar_url, p.bio "
+                    "SELECT u.id, u.email, u.role, u.status, u.is_locked, u.remark, u.last_login_at, u.created_at, "
+                    "u.updated_at, p.nickname, p.avatar_url, p.bio "
                     "FROM \"user\" u "
                     "LEFT JOIN user_profile p ON u.id = p.user_id "
                     "WHERE u.id = $1::integer OR u.email ILIKE $2 OR COALESCE(p.nickname, '') ILIKE $2 "
@@ -303,7 +326,8 @@ void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(c
                     "LIMIT $3::integer OFFSET $4::integer";
         } else {
             listQuery =
-                    "SELECT u.id, u.email, u.role, p.nickname, p.avatar_url, p.bio "
+                    "SELECT u.id, u.email, u.role, u.status, u.is_locked, u.remark, u.last_login_at, u.created_at, "
+                    "u.updated_at, p.nickname, p.avatar_url, p.bio "
                     "FROM \"user\" u "
                     "LEFT JOIN user_profile p ON u.id = p.user_id "
                     "WHERE u.email ILIKE $1 OR COALESCE(p.nickname, '') ILIKE $1 "
@@ -320,6 +344,16 @@ void UserController::searchUsers(const HttpRequestPtr& req, std::function<void(c
                 userJson["id"] = row["id"].as<int>();
                 userJson["email"] = row["email"].as<std::string>();
                 userJson["role"] = row["role"].as<std::string>();
+                userJson["status"] = row["status"].as<std::string>();
+                userJson["is_locked"] = row["is_locked"].as<bool>();
+                if (!row["remark"].isNull()) {
+                    userJson["remark"] = row["remark"].as<std::string>();
+                }
+                if (!row["last_login_at"].isNull()) {
+                    userJson["last_login_at"] = row["last_login_at"].as<std::string>();
+                }
+                userJson["created_at"] = row["created_at"].as<std::string>();
+                userJson["updated_at"] = row["updated_at"].as<std::string>();
 
                 Json::Value profileJson;
                 profileJson["nickname"] = row["nickname"].isNull() ? "" : row["nickname"].as<std::string>();

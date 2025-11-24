@@ -5,6 +5,8 @@
             "port": 8080
         }
     ],
+    "password_reset_token_ttl_minutes": 30,
+    "expose_password_reset_token": true,
     "app": {
         "jwt_secret": "aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789ab+cdefgh=",
         "jwt_access_expires_in": 900,

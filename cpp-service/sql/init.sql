@@ -16,6 +16,19 @@ CREATE TABLE user_profile (
   bio TEXT
 );
 
+-- 密码重置令牌
+CREATE TABLE password_reset_token (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  token_hash VARCHAR(128) NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_password_reset_token_user ON password_reset_token(user_id);
+CREATE INDEX idx_password_reset_token_hash ON password_reset_token(token_hash);
+
 -- 文档与访问控制
 CREATE TABLE document (
   id BIGSERIAL PRIMARY KEY,

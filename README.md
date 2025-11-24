@@ -225,6 +225,8 @@ VITE_WS_URL=ws://localhost:1234
 - `POST /api/auth/register` - 用户注册
 - `POST /api/auth/login` - 用户登录
 - `POST /api/auth/refresh` - 刷新 Token
+- `POST /api/auth/password/forgot` - 申请密码重置令牌（开发环境直接返回 token）
+- `POST /api/auth/password/reset` - 使用令牌更新密码
 
 ### 文档相关
 - `GET /api/docs` - 文档列表（支持状态筛选）
@@ -393,6 +395,8 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 - **meilisearch_url / meilisearch_master_key**：全文搜索服务地址与密钥
 - **minio_* 系列**：快照/附件默认落地到 MinIO，对应 endpoint / access_key / secret_key / bucket
 - **doc_converter_url**：文档转换服务地址，默认 `http://localhost:3002`
+- **password_reset_token_ttl_minutes**：密码重置令牌有效期（分钟），默认 30
+- **expose_password_reset_token**：开发模式下是否直接在 API 响应中返回 reset token，生产环境建议关闭并改为邮件发送
 
 ## 🔒 安全特性
 

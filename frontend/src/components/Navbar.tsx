@@ -83,6 +83,26 @@ export function Navbar() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [showUserMenu]);
 
+    const adminNavItem: NavItem | null =
+        user?.role === 'admin'
+            ? {
+                  label: '用户管理',
+                  to: '/admin/users',
+                  icon: (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zM6 20v-1a4 4 0 014-4h4a4 4 0 014 4v1"
+                          />
+                      </svg>
+                  ),
+              }
+            : null;
+
+    const computedNavItems = adminNavItem ? [...navItems, adminNavItem] : navItems;
+
     const handleLogout = () => {
         logout();
         navigate('/login');
@@ -92,7 +112,10 @@ export function Navbar() {
         if (item.exact) {
             return location.pathname === item.to;
         }
-        return location.pathname === '/docs' && item.to.startsWith('/docs');
+        if (item.to.startsWith('/docs')) {
+            return location.pathname.startsWith('/docs');
+        }
+        return location.pathname.startsWith(item.to);
     };
 
     return (
@@ -118,7 +141,7 @@ export function Navbar() {
 
                         {user && (
                             <nav className="hidden md:flex items-center gap-2 text-sm font-medium text-slate-600">
-                                {navItems.map((item) => (
+                                {computedNavItems.map((item) => (
                                     <Link
                                         key={item.label}
                                         to={item.to}
@@ -217,6 +240,23 @@ export function Navbar() {
                                                 </svg>
                                                 我的文档
                                             </Link>
+                                            {user.role === 'admin' && (
+                                                <Link
+                                                    to="/admin/users"
+                                                    onClick={() => setShowUserMenu(false)}
+                                                    className="flex items-center gap-2 rounded-lg px-4 py-2 transition hover:bg-blue-50 hover:text-blue-600"
+                                                >
+                                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path
+                                                            strokeLinecap="round"
+                                                            strokeLinejoin="round"
+                                                            strokeWidth={2}
+                                                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M9 11a4 4 0 100-8 4 4 0 000 8zm0 0v10m-7 0h14m-5-5a3 3 0 016 0"
+                                                        />
+                                                    </svg>
+                                                    用户管理
+                                                </Link>
+                                            )}
                                         </div>
                                         <button
                                             onClick={handleLogout}
@@ -264,7 +304,7 @@ export function Navbar() {
                 <div className="md:hidden border-t border-slate-200 bg-white/95 px-4 pb-4 pt-3 shadow-inner">
                     <div className="space-y-3">
                         <div className="grid gap-2">
-                            {navItems.map((item) => (
+                            {computedNavItems.map((item) => (
                                 <Link
                                     key={item.label}
                                     to={item.to}

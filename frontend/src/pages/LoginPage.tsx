@@ -137,6 +137,7 @@ export function LoginPage() {
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
+                    autoComplete="email"
                     onFocus={handleInputFocus}
                     onBlur={handleInputBlur}
                     className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-custom outline-none"
@@ -155,12 +156,12 @@ export function LoginPage() {
                   >
                     密码
                   </label>
-                  <a
-                    href="#"
+                  <Link
+                    to="/forgot-password"
                     className="text-sm text-primary hover:text-primary/80 transition-custom"
                   >
                     忘记密码?
-                  </a>
+                  </Link>
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -171,6 +172,7 @@ export function LoginPage() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
+                    autoComplete="current-password"
                     onFocus={handleInputFocus}
                     onBlur={handleInputBlur}
                     className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary/50 focus:border-primary transition-custom outline-none"

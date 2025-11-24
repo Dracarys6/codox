@@ -33,6 +33,16 @@ import {
     ChatMessage,
     NotificationListResponse,
     NotificationFilterParams,
+    AdminUser,
+    AdminUserListResponse,
+    AdminUserListParams,
+    UserAnalyticsResponse,
+    SubmitFeedbackRequest,
+    FeedbackStatsResponse,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
 } from '../types';
 
 // 确保在开发环境中使用相对路径，避免 CORS 问题
@@ -161,6 +171,22 @@ class ApiClient {
         const chatToken = response.data.chat_token || response.data.access_token;
         localStorage.setItem('chat_token', chatToken);
 
+        return response.data;
+    }
+
+    /**
+     * 申请密码重置令牌
+     */
+    async forgotPassword(data: ForgotPasswordRequest): Promise<ForgotPasswordResponse> {
+        const response = await this.client.post<ForgotPasswordResponse>('/auth/password/forgot', data);
+        return response.data;
+    }
+
+    /**
+     * 使用令牌重置密码
+     */
+    async resetPassword(data: ResetPasswordRequest): Promise<ResetPasswordResponse> {
+        const response = await this.client.post<ResetPasswordResponse>('/auth/password/reset', data);
         return response.data;
     }
 
@@ -492,6 +518,66 @@ class ApiClient {
      */
     async getUnreadNotificationCount(): Promise<{ unread_count: number }> {
         const response = await this.client.get<{ unread_count: number }>('/notifications/unread-count');
+        return response.data;
+    }
+
+    // ========== 管理员相关 API ==========
+
+    async getAdminUsers(params?: AdminUserListParams): Promise<AdminUserListResponse> {
+        const response = await this.client.get<AdminUserListResponse>('/admin/users', { params });
+        return response.data;
+    }
+
+    async exportAdminUsers(params?: AdminUserListParams): Promise<Blob> {
+        const response = await this.client.get('/admin/users/export', {
+            params,
+            responseType: 'blob',
+        });
+        return response.data as Blob;
+    }
+
+    async updateAdminUser(
+        userId: number,
+        data: { status?: string; is_locked?: boolean; remark?: string }
+    ): Promise<{ message: string; user: AdminUser }> {
+        const response = await this.client.patch<{ message: string; user: AdminUser }>(`/admin/users/${userId}`, data);
+        return response.data;
+    }
+
+    async updateAdminUserRoles(
+        userId: number,
+        roleOrRoles: string | string[]
+    ): Promise<{ message: string; user: AdminUser }> {
+        const payload =
+            typeof roleOrRoles === 'string'
+                ? { role: roleOrRoles }
+                : {
+                      roles: roleOrRoles,
+                  };
+        const response = await this.client.post<{ message: string; user: AdminUser }>(
+            `/admin/users/${userId}/roles`,
+            payload
+        );
+        return response.data;
+    }
+
+    async getUserAnalytics(params?: { from?: string; to?: string; limit?: number }): Promise<UserAnalyticsResponse> {
+        const response = await this.client.get<UserAnalyticsResponse>('/admin/user-analytics', { params });
+        return response.data;
+    }
+
+    // ========== 反馈相关 API ==========
+
+    async submitFeedback(data: SubmitFeedbackRequest): Promise<{ message: string; feedback_id: number; created_at: string }> {
+        const response = await this.client.post<{ message: string; feedback_id: number; created_at: string }>(
+            '/feedback',
+            data
+        );
+        return response.data;
+    }
+
+    async getFeedbackStats(params?: { dimension?: string; limit?: number }): Promise<FeedbackStatsResponse> {
+        const response = await this.client.get<FeedbackStatsResponse>('/feedback/stat', { params });
         return response.data;
     }
 

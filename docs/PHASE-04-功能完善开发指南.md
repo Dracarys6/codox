@@ -92,16 +92,12 @@
 
 - [x] **Word 文档导入导出**
   - [x] 后端：创建 doc-converter-service（Node.js 服务，使用 `mammoth` 和 `docx`）
-  - [x] 后端：实现 Word 导入接口 (`POST /api/documents/import/word`)
   - [x] 后端：实现 Word 导出接口 (`GET /api/documents/{id}/export/word`)
-  - [x] 前端：上传 Word 文件导入（ImportModal 组件）
   - [x] 前端：导出为 Word 文件（ExportMenu 组件）
 
 - [x] **PDF 文档导入导出**
   - [x] 后端：集成 PDF 解析库（`pdf-parse` 和 `pdf-lib`）
-  - [x] 后端：实现 PDF 导入接口 (`POST /api/documents/import/pdf`)
   - [x] 后端：实现 PDF 导出接口 (`GET /api/documents/{id}/export/pdf`)
-  - [x] 前端：上传 PDF 文件导入
   - [x] 前端：导出为 PDF 文件
 
 - [x] **Markdown 导入导出**

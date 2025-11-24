@@ -9,6 +9,12 @@ export interface User {
     id: number;
     email: string;
     role: string;
+    status?: string;
+    is_locked?: boolean;
+    remark?: string;
+    last_login_at?: string;
+    created_at?: string;
+    updated_at?: string;
     profile: {
         nickname: string;
         avatar_url: string;
@@ -47,6 +53,9 @@ export interface LoginResponse {
         id: number;
         email: string;
         role: string;
+        status?: string;
+        is_locked?: boolean;
+        last_login_at?: string;
         nickname: string;
         avatar_url: string;
     };
@@ -59,6 +68,25 @@ export interface RefreshTokenRequest {
 export interface RefreshTokenResponse {
     access_token: string;
     chat_token?: string;
+}
+
+export interface ForgotPasswordRequest {
+    email: string;
+}
+
+export interface ForgotPasswordResponse {
+    message: string;
+    reset_token?: string;
+    expires_at?: string;
+}
+
+export interface ResetPasswordRequest {
+    token: string;
+    new_password: string;
+}
+
+export interface ResetPasswordResponse {
+    message: string;
 }
 
 // 更新用户资料请求
@@ -293,5 +321,94 @@ export interface VersionDiffResponse {
     base_version_id: number | null;
     target_version_id: number;
     diff: DiffSegment[];
+}
+
+export interface AdminUserStats {
+    document_count: number;
+    active_document_count: number;
+    comment_count: number;
+    completed_tasks: number;
+}
+
+export interface AdminUser extends User {
+    stats: AdminUserStats;
+}
+
+export interface AdminUserListResponse {
+    users: AdminUser[];
+    total: number;
+    page: number;
+    page_size: number;
+}
+
+export interface AdminUserListParams {
+    page?: number;
+    page_size?: number;
+    keyword?: string;
+    role?: string;
+    status?: string;
+    is_locked?: boolean;
+    sort_by?: 'created_at' | 'last_login_at' | 'document_count' | 'comment_count' | 'completed_tasks';
+    sort_order?: 'asc' | 'desc';
+}
+
+export interface UserAnalyticsTotals {
+    documents_created: number;
+    comments_created: number;
+    tasks_completed: number;
+    active_users: number;
+}
+
+export interface UserAnalyticsTopUser {
+    user_id: number;
+    email: string;
+    nickname: string;
+    role: string;
+    documents_created: number;
+    comments_created: number;
+    tasks_completed: number;
+    last_login_at?: string;
+}
+
+export interface UserAnalyticsRoleStat {
+    role: string;
+    documents_created: number;
+    comments_created: number;
+    tasks_completed: number;
+}
+
+export interface UserAnalyticsResponse {
+    range: { from: string; to: string };
+    totals: UserAnalyticsTotals;
+    top_users: UserAnalyticsTopUser[];
+    role_breakdown: UserAnalyticsRoleStat[];
+}
+
+export interface SubmitFeedbackRequest {
+    dimension: string;
+    score: number;
+    comment?: string;
+}
+
+export interface FeedbackSummaryItem {
+    dimension: string;
+    responses: number;
+    avg_score: number;
+}
+
+export interface FeedbackEntry {
+    id: number;
+    user_id: number;
+    dimension: string;
+    score: number;
+    comment: string;
+    created_at: string;
+    email: string;
+    nickname: string;
+}
+
+export interface FeedbackStatsResponse {
+    summary: FeedbackSummaryItem[];
+    recent: FeedbackEntry[];
 }
 
