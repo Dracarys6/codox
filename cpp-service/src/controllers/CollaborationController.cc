@@ -194,7 +194,7 @@ void CollaborationController::getBootstrap(const HttpRequestPtr& req,
                     }
                     responseJson["sha256"] = r[0]["snapshot_sha256"].as<std::string>();
                     responseJson["version_id"] = r[0]["version_id"].as<int>();
-                    
+
                     // 优化：即使有快照 URL，也返回 content_html 和 content_text 作为后备方案
                     // 这样当快照文件无法访问时（例如恢复的旧版本），前端仍可以从 HTML 内容初始化
                     if (!r[0]["content_html"].isNull() && !r[0]["content_html"].as<std::string>().empty()) {
@@ -203,7 +203,7 @@ void CollaborationController::getBootstrap(const HttpRequestPtr& req,
                     if (!r[0]["content_text"].isNull() && !r[0]["content_text"].as<std::string>().empty()) {
                         responseJson["content_text"] = r[0]["content_text"].as<std::string>();
                     }
-                    
+
                     ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                     return;
                 },
@@ -506,6 +506,15 @@ void CollaborationController::saveSnapshotMetadata(const HttpRequestPtr& req,
         std::string sha256 = json["sha256"].asString();
         int64_t sizeBytes = json["size_bytes"].asInt64();
 
+        std::string contentText;
+        std::string contentHtml;
+        if (json.isMember("content_text") && json["content_text"].isString()) {
+            contentText = json["content_text"].asString();
+        }
+        if (json.isMember("content_html") && json["content_html"].isString()) {
+            contentHtml = json["content_html"].asString();
+        }
+
         // 5.检查是否已存在相同 SHA256 的版本(幂等性)
         auto db = drogon::app().getDbClient();
         if (!db) {
@@ -528,8 +537,8 @@ void CollaborationController::saveSnapshotMetadata(const HttpRequestPtr& req,
                     // 6.插入新版本记录 (created_by 使用当前用户)
                     db->execSqlAsync(
                             "INSERT INTO document_version (doc_id, snapshot_url, snapshot_sha256, size_bytes, "
-                            "created_by)"
-                            "VALUES ($1, $2, $3, $4::bigint, $5::integer)"
+                            "created_by, content_text, content_html, source) "
+                            "VALUES ($1, $2, $3, $4::bigint, $5::integer, $6, $7, 'auto') "
                             "RETURNING id",
                             [=](const drogon::orm::Result& r) {
                                 if (r.empty()) {
@@ -563,7 +572,8 @@ void CollaborationController::saveSnapshotMetadata(const HttpRequestPtr& req,
                                                          "Database error: " + std::string(e.base().what()),
                                                          k500InternalServerError);
                             },
-                            docIdStr, snapshotUrl, sha256, std::to_string(sizeBytes), std::to_string(userId));
+                            docIdStr, snapshotUrl, sha256, std::to_string(sizeBytes), std::to_string(userId),
+                            contentText, contentHtml);
                 },
                 [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),

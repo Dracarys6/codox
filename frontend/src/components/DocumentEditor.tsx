@@ -271,10 +271,16 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
                 const sha256 = await calculateSHA256(snapshotJson);
                 const snapshotUrl = await uploadSnapshot(docId, snapshot, sha256);
 
+                // 额外保存 HTML / 文本内容，便于版本恢复时快速初始化
+                const htmlContent = editor?.getHTML() || '';
+                const textContent = editor?.getText({ blockSeparator: '\n' }) || '';
+
                 await apiClient.saveSnapshot(docId, {
                     snapshot_url: snapshotUrl,
                     sha256,
                     size_bytes: snapshot.length,
+                    content_html: htmlContent,
+                    content_text: textContent,
                 });
 
                 if (onSave && isMounted) {
@@ -293,13 +299,14 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
             onSaveReady(saveSnapshot);
         }
 
+        // 自动保存间隔从 30 秒调整为 60 秒，降低版本噪音
         saveIntervalRef.current = window.setInterval(async () => {
             try {
                 await saveSnapshot();
             } catch (error) {
                 console.error('Periodic save failed:', error);
             }
-        }, 30000);
+        }, 60000);
 
         return () => {
             isMounted = false;

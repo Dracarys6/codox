@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiClient from '../api/client';
-import { Document } from '../types';
+import { Document, DocumentAcl } from '../types';
 import { NotificationBell } from '../components/NotificationBell';
 import { getDocumentStatusDisplay } from '../utils/documentStatus';
 import { ImportModal } from '../components/ImportModal';
@@ -25,8 +25,8 @@ export function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAlertVisible, setIsAlertVisible] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [stats, setStats] = useState<DocumentStats>({ 
-    collaborativeCount: 0, 
+  const [stats, setStats] = useState<DocumentStats>({
+    collaborativeCount: 0,
     attentionNeededCount: 0,
     collaborativeDocs: [],
     attentionNeededDocs: []
@@ -59,14 +59,23 @@ export function HomePage() {
     }
   };
 
+  const isDocumentAclResult = (
+    value: DocumentAcl | { isCollaborative: boolean } | null
+  ): value is DocumentAcl => {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+    return 'acl' in value && Array.isArray((value as DocumentAcl).acl);
+  };
+
   const loadStats = async () => {
     if (!user?.id) return;
-    
+
     setIsLoadingStats(true);
     try {
       // 获取所有文档的 ACL 信息，统计协作文档
       // 注意：只有文档 owner 才能查看 ACL
-      const aclPromises = documents.map((doc) => 
+      const aclPromises = documents.map((doc) =>
         apiClient.getDocumentAcl(doc.id).catch((err: any) => {
           // 如果是权限错误（403），说明用户不是 owner
           // 但用户能访问这个文档（在列表中），说明文档有 ACL 权限，可能是协作文档
@@ -78,23 +87,23 @@ export function HomePage() {
         })
       );
       const aclResults = await Promise.all(aclPromises);
-      
+
       // 协作文档统计：
       // 1. 用户是 owner 且 ACL 中有多个用户的文档
       // 2. 用户不是 owner 但能访问的文档（说明有 ACL 权限，是协作文档）
       const collaborativeDocs: Document[] = [];
       aclResults.forEach((acl, index) => {
         if (!acl) return;
-        
+
         const doc = documents[index];
         if (!doc) return;
-        
+
         // 如果返回的是标记对象，说明用户不是 owner 但能访问，是协作文档
         if ('isCollaborative' in acl && acl.isCollaborative) {
           collaborativeDocs.push(doc);
         }
         // 如果返回的是 ACL 数据，检查是否有多个用户
-        else if (acl.acl && acl.acl.length > 1) {
+        else if (isDocumentAclResult(acl) && acl.acl.length > 1) {
           collaborativeDocs.push(doc);
         }
       });
@@ -104,12 +113,12 @@ export function HomePage() {
         apiClient.getTasks(doc.id).catch(() => ({ tasks: [] }))
       );
       const taskResults = await Promise.all(taskPromises);
-      
+
       // 需要关注：有未完成任务（todo 或 doing）的文档
       // 特别是分配给当前用户的任务，或者是当前用户创建的未完成任务
       const attentionNeededDocs: Document[] = [];
       const attentionDocIds = new Set<number>();
-      
+
       taskResults.forEach((result, index) => {
         if (result && result.tasks && Array.isArray(result.tasks)) {
           const hasUnfinishedTask = result.tasks.some((task: any) => {
@@ -119,7 +128,7 @@ export function HomePage() {
             // 如果有未完成的任务，且是指派给当前用户或当前用户创建的
             return isUnfinished && (isAssignedToMe || isMyTask);
           });
-          
+
           if (hasUnfinishedTask) {
             const doc = documents[index];
             if (doc && !attentionDocIds.has(doc.id)) {
@@ -149,7 +158,7 @@ export function HomePage() {
   }, [documents]);
 
   const continueDoc = documents[0];
-  
+
   // 最近文档只显示前10个
   const recentDocs = useMemo(() => documents.slice(0, 10), [documents]);
 
@@ -190,7 +199,7 @@ export function HomePage() {
       <header className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-              <div className="flex items-center">
+            <div className="flex items-center">
               <div className="flex-shrink-0 flex items-center">
                 <Link to="/home" className="flex items-center">
                   <div className="bg-primary text-white p-1.5 rounded-lg">
@@ -339,11 +348,10 @@ export function HomePage() {
               <i className="fa fa-chevron-right text-gray-400"></i>
             </Link>
             <div
-              className={`bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 transition-all ${
-                stats.collaborativeDocs.length > 0
+              className={`bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 transition-all ${stats.collaborativeDocs.length > 0
                   ? 'hover:shadow-md hover:border-secondary/30 cursor-pointer'
                   : ''
-              }`}
+                }`}
               onClick={() => {
                 if (stats.collaborativeDocs.length > 0) {
                   // 滚动到协作文档列表
@@ -370,11 +378,10 @@ export function HomePage() {
               )}
             </div>
             <div
-              className={`bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 transition-all ${
-                stats.attentionNeededDocs.length > 0
+              className={`bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 transition-all ${stats.attentionNeededDocs.length > 0
                   ? 'hover:shadow-md hover:border-warning/30 cursor-pointer'
                   : ''
-              }`}
+                }`}
               onClick={() => {
                 if (stats.attentionNeededDocs.length > 0) {
                   // 滚动到需要关注的文档列表
@@ -627,7 +634,7 @@ export function HomePage() {
                             return (
                               <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusDisplay.className}`}>
                                 {statusDisplay.text}
-                          </span>
+                              </span>
                             );
                           })()}
                         </td>

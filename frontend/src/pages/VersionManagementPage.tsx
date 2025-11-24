@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DocumentVersion } from '../types';
 import { VersionTimeline } from '../components/VersionTimeline';
@@ -13,6 +13,51 @@ export function VersionManagementPage() {
     const [selectedVersion, setSelectedVersion] = useState<DocumentVersion | null>(null);
     const [showDiff, setShowDiff] = useState(false);
     const [previewVersion, setPreviewVersion] = useState<DocumentVersion | null>(null);
+    const [previewData, setPreviewData] = useState<DocumentVersion | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [previewError, setPreviewError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        if (!previewVersion || !docId) {
+            setPreviewData(null);
+            setPreviewError(null);
+            setPreviewLoading(false);
+            return;
+        }
+
+        if (previewVersion.content_html || previewVersion.content_text) {
+            setPreviewData(previewVersion);
+            setPreviewError(null);
+            setPreviewLoading(false);
+            return;
+        }
+
+        setPreviewLoading(true);
+        setPreviewError(null);
+        apiClient
+            .getDocumentVersion(docId, previewVersion.id)
+            .then((data) => {
+                if (!cancelled) {
+                    setPreviewData(data);
+                }
+            })
+            .catch((err: any) => {
+                if (!cancelled) {
+                    setPreviewError(err.response?.data?.error || '加载版本内容失败');
+                }
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setPreviewLoading(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [previewVersion, docId]);
 
     const handleVersionSelect = (version: DocumentVersion) => {
         setSelectedVersion(version);
@@ -37,6 +82,8 @@ export function VersionManagementPage() {
     const handlePreview = (version: DocumentVersion) => {
         setPreviewVersion(version);
     };
+
+    const effectivePreview = previewData || previewVersion;
 
     if (!docId) {
         return <div className="p-8 text-center text-red-500">无效的文档 ID</div>;
@@ -180,19 +227,31 @@ export function VersionManagementPage() {
                             </button>
                         </div>
                         <div className="p-6">
-                            {previewVersion.content_html ? (
-                                <div
-                                    className="prose max-w-none"
-                                    dangerouslySetInnerHTML={{ __html: previewVersion.content_html }}
-                                />
-                            ) : previewVersion.content_text ? (
-                                <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-50 p-4 rounded">
-                                    {previewVersion.content_text}
-                                </pre>
-                            ) : (
-                                <div className="text-center py-8 text-gray-500">
-                                    该版本没有可预览的内容
-                                </div>
+                            {previewLoading && (
+                                <div className="text-center py-8 text-gray-500">正在加载版本内容...</div>
+                            )}
+                            {!previewLoading && previewError && (
+                                <div className="text-center py-8 text-red-500">{previewError}</div>
+                            )}
+                            {!previewLoading && !previewError && (
+                                <>
+                                    {effectivePreview?.content_html ? (
+                                        <div
+                                            className="prose max-w-none"
+                                            dangerouslySetInnerHTML={{
+                                                __html: effectivePreview.content_html || '',
+                                            }}
+                                        />
+                                    ) : effectivePreview?.content_text ? (
+                                        <pre className="whitespace-pre-wrap font-mono text-sm bg-gray-50 p-4 rounded">
+                                            {effectivePreview.content_text}
+                                        </pre>
+                                    ) : (
+                                        <div className="text-center py-8 text-gray-500">
+                                            该版本没有可预览的内容
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                         <div className="p-6 border-t border-gray-200 flex justify-end gap-3">

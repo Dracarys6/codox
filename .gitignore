@@ -26,3 +26,6 @@ docker/.env
 
 # meili_data 数据库数据目录
 meili_data/
+
+# 
+docs/completed/

@@ -15,6 +15,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <vector>
+#include <regex>
 
 #include "../repositories/VersionRepository.h"
 #include "../services/SearchService.h"
@@ -36,6 +37,49 @@ static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpRe
                                  const std::string &title, const std::string &content);
 static void proceedWithMarkdownExport(std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr,
                                       const std::string &title, const std::string &content);
+
+static std::string htmlToPlainText(const std::string &html) {
+    if (html.empty()) {
+        return "";
+    }
+
+    std::string text = html;
+    text = std::regex_replace(text, std::regex("<script[\\s\\S]*?</script>", std::regex_constants::icase), "");
+    text = std::regex_replace(text, std::regex("<style[\\s\\S]*?</style>", std::regex_constants::icase), "");
+    text = std::regex_replace(text, std::regex("<\\s*/?\\s*p\\s*>", std::regex_constants::icase), "\n");
+    text = std::regex_replace(text, std::regex("<\\s*br\\s*/?>", std::regex_constants::icase), "\n");
+    text = std::regex_replace(text, std::regex("<[^>]+>"), " ");
+
+    auto replaceAll = [](std::string &target, const std::string &from, const std::string &to) {
+        size_t pos = 0;
+        while ((pos = target.find(from, pos)) != std::string::npos) {
+            target.replace(pos, from.length(), to);
+            pos += to.length();
+        }
+    };
+
+    replaceAll(text, "&nbsp;", " ");
+    replaceAll(text, "&lt;", "<");
+    replaceAll(text, "&gt;", ">");
+    replaceAll(text, "&amp;", "&");
+    replaceAll(text, "&quot;", "\"");
+    replaceAll(text, "&#39;", "'");
+
+    text = std::regex_replace(text, std::regex("[ \\t]+"), " ");
+    text = std::regex_replace(text, std::regex("\\n{3,}"), "\n\n");
+
+    return text;
+}
+
+static std::string ensurePlainText(const std::string &contentText, const std::string &contentHtml) {
+    if (!contentText.empty()) {
+        return contentText;
+    }
+    if (contentHtml.empty()) {
+        return "";
+    }
+    return htmlToPlainText(contentHtml);
+}
 // 辅助函数：构建文档响应
 static void buildDocumentResponse(const drogon::orm::Result &r,
                                   std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr) {
@@ -1813,21 +1857,25 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
         }
 
         db->execSqlAsync(
-                "SELECT content_text FROM document_version WHERE id = $1::bigint AND doc_id = $2::bigint",
+                "SELECT content_text, content_html FROM document_version WHERE id = $1::bigint AND doc_id = $2::bigint",
                 [=](const drogon::orm::Result &targetResult) {
                     if (targetResult.empty()) {
                         ResponseUtils::sendError(*callbackPtr, "Version not found", k404NotFound);
                         return;
                     }
 
-                    std::string targetText = targetResult[0]["content_text"].isNull()
-                                                     ? ""
-                                                     : targetResult[0]["content_text"].as<std::string>();
+                    std::string targetText = ensurePlainText(
+                            targetResult[0]["content_text"].isNull()
+                                    ? ""
+                                    : targetResult[0]["content_text"].as<std::string>(),
+                            targetResult[0]["content_html"].isNull()
+                                    ? ""
+                                    : targetResult[0]["content_html"].as<std::string>());
 
                     // 6. 获取基础版本内容
                     if (baseVersionId > 0) {
                         db->execSqlAsync(
-                                "SELECT content_text FROM document_version WHERE id = $1::bigint AND doc_id = "
+                                "SELECT content_text, content_html FROM document_version WHERE id = $1::bigint AND doc_id = "
                                 "$2::bigint",
                                 [=](const drogon::orm::Result &baseResult) {
                                     if (baseResult.empty()) {
@@ -1835,9 +1883,13 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
                                         return;
                                     }
 
-                                    std::string baseText = baseResult[0]["content_text"].isNull()
-                                                                   ? ""
-                                                                   : baseResult[0]["content_text"].as<std::string>();
+                                    std::string baseText = ensurePlainText(
+                                            baseResult[0]["content_text"].isNull()
+                                                    ? ""
+                                                    : baseResult[0]["content_text"].as<std::string>(),
+                                            baseResult[0]["content_html"].isNull()
+                                                    ? ""
+                                                    : baseResult[0]["content_html"].as<std::string>());
 
                                     // 7. 计算差异
                                     auto segments = DiffUtils::computeLineDiff(baseText, targetText);
@@ -1856,13 +1908,16 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
                     } else {
                         // 与当前版本比较（获取最新的版本）
                         db->execSqlAsync(
-                                "SELECT content_text FROM document_version WHERE doc_id = $1::bigint ORDER BY "
-                                "version_number DESC LIMIT 1",
+                                "SELECT content_text, content_html FROM document_version WHERE doc_id = $1::bigint "
+                                "ORDER BY version_number DESC LIMIT 1",
                                 [=](const drogon::orm::Result &currentResult) {
-                                    std::string baseText =
+                                    std::string baseText = ensurePlainText(
                                             currentResult.empty() || currentResult[0]["content_text"].isNull()
                                                     ? ""
-                                                    : currentResult[0]["content_text"].as<std::string>();
+                                                    : currentResult[0]["content_text"].as<std::string>(),
+                                            currentResult.empty() || currentResult[0]["content_html"].isNull()
+                                                    ? ""
+                                                    : currentResult[0]["content_html"].as<std::string>());
 
                                     // 计算差异
                                     auto segments = DiffUtils::computeLineDiff(baseText, targetText);

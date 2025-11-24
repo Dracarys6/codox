@@ -234,8 +234,6 @@ VITE_WS_URL=ws://localhost:1234
 - `DELETE /api/docs/{id}` - 删除文档
 - `GET /api/docs/{id}/acl` - 获取 ACL 列表
 - `PUT /api/docs/{id}/acl` - 更新 ACL
-- `POST /api/docs/import/word` - 导入 Word 文档
-- `POST /api/docs/import/pdf` - 导入 PDF 文档
 - `POST /api/docs/import/markdown` - 导入 Markdown 文档（支持文件上传和文本输入）
 - `GET /api/docs/{id}/export/word` - 导出为 Word
 - `GET /api/docs/{id}/export/pdf` - 导出为 PDF
@@ -481,7 +479,7 @@ curl -X POST http://localhost:8080/api/auth/refresh \
 - [x] 文档状态管理（自动状态更新、状态筛选）
 - [x] 主页统计优化（协作文档、需要关注文档）
 - [x] 通知筛选功能（类型、文档、日期、未读状态筛选）
-- [ ] 文档版本控制增强（手动版本、diff、恢复体验）
+- [x] 文档版本控制增强（版本时间线、差异对比、预览/恢复体验、自动保存策略）
 - [ ] 用户管理与运营（管理员用户列表、角色调整、行为分析、满意度调查）
 
 ## 🤝 贡献

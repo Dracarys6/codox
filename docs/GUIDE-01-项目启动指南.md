@@ -11,15 +11,9 @@
 1. **PostgreSQL 数据库** - 数据存储（端口 5432）
 2. **C++ 后端服务** - API 服务（端口 8080）
 3. **前端服务** - React 应用（端口 5173）
-
-### 第三阶段服务（必需）
-
 4. **协作服务** - y-websocket 服务（端口 1234）
 5. **Meilisearch** - 全文搜索服务（端口 7700）
 6. **MinIO** - 对象存储服务（端口 9000/9001）
-
-### 第四阶段服务（可选，导入导出功能需要）
-
 7. **文档转换服务** - doc-converter-service（端口 3002）
 
 ---
@@ -166,63 +160,6 @@ npm start
 
 ---
 
-### 方式二：完全手动启动（不使用 Docker Compose）
-
-如果你不想使用 Docker Compose，可以手动启动所有服务：
-
-#### 1. 启动 PostgreSQL 数据库
-
-```bash
-# 启动 PostgreSQL 服务
-sudo service postgresql start
-
-# 检查服务状态
-sudo service postgresql status
-
-# 如果需要创建数据库（首次运行）
-sudo -u postgres psql << EOF
-CREATE DATABASE collab;
-CREATE USER collab WITH PASSWORD '20050430';
-GRANT ALL PRIVILEGES ON DATABASE collab TO collab;
-\q
-EOF
-
-# 执行数据库初始化脚本（首次运行）
-PGPASSWORD=20050430 psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/init.sql
-```
-
-#### 2. 启动 Meilisearch
-
-```bash
-# 使用 Docker 启动
-docker run -d \
-  --name codox-meilisearch \
-  -p 7700:7700 \
-  -v $(pwd)/meili_data:/meili_data \
-  getmeili/meilisearch:latest \
-  meilisearch --master-key="8a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d-7e8f9a0b1c2d3e4f5g6h7i8j9k0l"
-```
-
-#### 3. 启动 MinIO
-
-```bash
-# 使用 Docker 启动
-docker run -d \
-  --name codox-minio \
-  -p 9000:9000 \
-  -p 9001:9001 \
-  -v $(pwd)/minio_data:/data \
-  -e MINIO_ROOT_USER=minioadmin \
-  -e MINIO_ROOT_PASSWORD=minioadmin \
-  minio/minio:latest server /data --console-address ":9001"
-
-# 访问 MinIO 控制台: http://localhost:9001
-```
-
-然后继续启动 C++ 后端、前端和协作服务（见方式一的步骤 2-4）。
-
----
-
 ## 📝 启动检查清单
 
 启动所有服务后，按顺序检查以下端点：
@@ -283,11 +220,7 @@ docker-compose ps
 
 ## 🛑 停止服务
 
-### 方式一：使用启动脚本
-
-如果使用 `start-dev.sh` 启动，按 `Ctrl+C` 即可停止所有应用服务。
-
-### 方式二：手动停止
+### 方式一：手动停止
 
 #### 停止应用服务
 
@@ -309,7 +242,7 @@ docker-compose down
 docker-compose down -v
 ```
 
-### 方式三：使用命令停止
+### 方式二：使用命令停止
 
 ```bash
 # 停止所有 Node.js 进程

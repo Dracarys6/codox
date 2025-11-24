@@ -35,10 +35,6 @@ import {
     NotificationFilterParams,
 } from '../types';
 
-// 开发环境：使用相对路径利用 Vite 代理
-// 生产环境：使用环境变量配置的完整 URL
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-
 // 确保在开发环境中使用相对路径，避免 CORS 问题
 const getApiBaseUrl = () => {
     const envUrl = import.meta.env.VITE_API_BASE_URL;
@@ -400,7 +396,10 @@ class ApiClient {
     /**
      * 保存快照元数据（使用 JWT 认证）
      */
-    async saveSnapshot(docId: number, data: { snapshot_url: string; sha256: string; size_bytes: number }): Promise<{ version_id: number; message: string }> {
+    async saveSnapshot(
+        docId: number,
+        data: { snapshot_url: string; sha256: string; size_bytes: number; content_html?: string; content_text?: string }
+    ): Promise<{ version_id: number; message: string }> {
         const response = await this.client.post<{ version_id: number; message: string }>(
             `/collab/snapshot/${docId}/save`,
             data
