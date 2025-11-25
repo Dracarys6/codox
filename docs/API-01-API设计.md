@@ -5,8 +5,8 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 
 # codox API 总览
 
-> 文档版本：2025-01-20  codox
-> 维护人：研发团队（已同步第四阶段最新功能：文档导入导出、状态管理、主页统计、通知筛选）
+> 文档版本：2025-11-23（发布版）
+> 维护人：研发团队
 
 ---
 
@@ -81,11 +81,15 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 - `GET /api/docs/{id}/versions` — 列出历史版本记录。
 - `POST /api/docs/{id}/rollback/{versionId}` — 将文档回滚到指定版本（需记录操作者及生成新版本或标记回滚）。
 
+### 文档版本增强
+- `GET /api/docs/{id}/versions/{versionId}` — 获取单个版本详情（HTML、纯文本、快照、创建者信息、变更摘要）。
+- `POST /api/docs/{id}/versions` — 手动保存版本，可附带 `change_summary` 与来源信息。
+- `POST /api/docs/{id}/versions/{versionId}/restore` — 一键恢复并自动写入新的版本记录。
+- `GET /api/docs/{id}/versions/{versionId}/diff` — 输出指定版本与当前内容的差异（块级 diff + 高亮）。
+
 ---
 
-## 已上线接口（第四阶段）
-
-### 文档导入导出 ✅
+### 文档导入导出
 - `POST /api/docs/import/markdown` — 上传 Markdown 文件或直接提交 Markdown 文本，转换为 HTML，返回文档 ID。
 - `GET /api/docs/{id}/export/word` — 基于文档内容导出为 Word 格式（.docx）。
 - `GET /api/docs/{id}/export/pdf` — 基于文档内容导出为 PDF 格式。
@@ -93,35 +97,33 @@ description: 记录 codox 当前已实现的后端接口与规划中的未来接
 
 > ✅ 文档导入导出模块已完成实现，支持 Word/PDF/Markdown 三种格式的导入导出，使用独立的 doc-converter-service 进行格式转换。
 
-### 文档状态管理 ✅
+---
+
+### 文档状态管理
 - `PATCH /api/docs/{id}` — 支持更新文档状态（`status` 字段），可选值：`draft`（草稿）、`saved`（已保存）、`published`（已发布）、`archived`（已归档）、`locked`（已锁定）。
 - 文档保存后自动将状态从 `draft` 更新为 `saved`。
 
 > ✅ 文档状态管理已完成实现，支持手动设置状态和自动状态更新。
 
-## 即将上线接口（第四阶段增强）
+---
 
-### 文档版本增强
-- `GET /api/docs/{id}/versions/{versionId}` — 查看单个版本详情、快照元数据。
-- `POST /api/docs/{id}/versions` — 手动保存版本（附带 `change_summary`）。
-- `POST /api/docs/{id}/versions/{versionId}/restore` — 一键恢复，自动写入新的版本记录（含“来源版本”字段）。
+### 管理员与运营
+- `GET /api/admin/users` — 多条件（关键字、角色、状态、创建时间）分页查询，支持 `export=csv` 导出。
+- `PATCH /api/admin/users/{id}` — 启停账号、锁定/解锁、备注更新并写入审计日志。
+- `POST /api/admin/users/{id}/roles` — 调整角色集合，自动记录审计。
+- `GET /api/admin/user-analytics` — 按日期范围输出活跃度、文档/评论/任务等指标。
 
-### 用户管理 / 运营
-- `GET /api/admin/users` — 分页、角色、状态、关键字筛选；需要 `admin` 权限。
-- `PATCH /api/admin/users/{id}` — 修改账号状态（启用/停用）、锁定、备注。
-- `POST /api/admin/users/{id}/roles` — 调整角色集合；操作写入审计日志。
-- `GET /api/admin/user-analytics` — 根据时间段输出活跃度、文档/评论/任务等指标。
-- `POST /api/feedback` & `GET /api/feedback/stat` — 收集满意度问卷并生成汇总报表。
+> 所有管理员接口由 `AdminUserController` 提供，需 `admin` 角色授权。
 
-> 以上接口的详细行为、错误码、字段定义，详见《PHASE-04-功能完善开发指南.md》与《ARCH-02-详细设计.md》中的最新章节。
+### 满意度反馈
+- `POST /api/feedback` — 登录用户提交满意度与文本意见。
+- `GET /api/feedback/stat` — 管理员查看满意度占比、常见反馈摘要。
 
 ---
 
 ## 参考资料
-- `docs/详细设计.md` — 完整 API 交互设计、请求/响应示例、错误码约定。
-- `docs/第二阶段开发指南.md` — 文档 ACL、版本发布等迭代目标与实现建议。
-- `docs/第三阶段开发指南.md` — 实时协作、评论、任务、通知、搜索等高级功能规划。
-- `docs/PHASE-04-功能完善开发指南.md` — 第四阶段功能完善，包括实时通讯、通知增强、导入导出等。
+- `docs/ARCH-02-详细设计.md` — 完整 API 交互设计、请求/响应示例、错误码约定。
+- `docs/PROJECT-项目总结.md` — 发布说明与功能概览。
 - `cpp-service/src/controllers/*` — 当前服务端接口实现，建议与本文件保持联动更新。
 
 如需扩展或导出其他格式，可在此基础上继续维护。欢迎在每次迭代后同步更新此文档，以保持研发、测试、产品对齐。

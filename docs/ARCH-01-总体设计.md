@@ -30,15 +30,15 @@
 - ✅ 通知系统 V1（列表、未读计数、已读同步）
 - ⛔️ 实时通讯后台（原聊天室/消息/WebSocket 网关方案已取消）
 - ✅ 文档导入导出（Word/PDF/Markdown，独立转换服务）
-- 🔄 第四阶段增强：通知过滤/设置、版本时间线、用户管理与运营看板
+- ✅ 功能增强：通知过滤/设置、版本时间线、用户管理概览与运营指标
 
 ### 核心功能
 
-- **用户管理**：注册/登录、Token 刷新、个人资料、即将上线的管理员视角（列表、权限、行为数据）
+- **用户管理**：注册/登录、Token 刷新、个人资料、管理员视角（列表、权限、行为数据）
 - **权限管理**：RBAC 角色（admin/editor/viewer）+ 文档级 ACL；版本/ACL 变更审计
 - **文档管理**：文档 CRUD、标签、快照/版本历史、MinIO 快照存储、导入导出（Word/PDF/Markdown）
-- **实时协作与通讯**：Yjs + y-websocket，多人协作编辑、聊天室、光标同步、任务/评论联动
-- **通知系统**：站内通知、未读计数、Webhook/WS 推送、即将上线的通知过滤与偏好设置
+- **实时协作**：Yjs + y-websocket，多人协作编辑、光标同步、任务/评论联动、通知 WebSocket
+- **通知系统**：站内通知、未读计数、Webhook/WS 推送、筛选与偏好设置
 
 ---
 
@@ -250,78 +250,9 @@
 
 ---
 
-## 开发路线图
-
-### ✅ 第一阶段（已完成）
-
-- [x] 项目环境搭建
-- [x] 数据库初始化
-- [x] 用户认证系统（注册/登录/刷新）
-- [x] 健康检查接口
-- [x] JWT 令牌管理
-- [x] 密码加密实现
-- [x] 用户资料管理（GET/PATCH /api/users/me）
-
-### ✅ 第二阶段（已完成）
-
-- [x] 文档 CRUD 接口
-  - [x] POST /api/docs（创建文档）
-  - [x] GET /api/docs（列表查询）
-  - [x] GET /api/docs/:id（获取文档）
-  - [x] PATCH /api/docs/:id（更新文档）
-  - [x] DELETE /api/docs/:id（删除文档）
-- [x] 文档权限管理（ACL）
-  - [x] GET /api/docs/:id/acl（获取 ACL）
-  - [x] PUT /api/docs/:id/acl（设置 ACL）
-- [x] 文档版本管理
-  - [x] POST /api/docs/:id/publish（发布版本）
-  - [x] GET /api/docs/:id/versions（版本列表）
-  - [x] POST /api/docs/:id/rollback/:versionId（版本回滚）
-
-### ✅ 第三阶段（已完成）
-
-- [x] 实时协作接入
-  - [x] Yjs + WebSocket 集成
-  - [x] POST /api/collab/token（协作令牌）
-  - [x] POST /api/collab/snapshot/:docId（快照回调）
-  - [x] GET /api/collab/bootstrap/:docId（引导快照）
-- [x] 评论系统
-  - [x] GET/POST /api/comments
-  - [x] PUT /api/comments/:id
-  - [x] DELETE /api/comments/:id
-- [x] 任务管理
-  - [x] GET/POST /api/tasks
-  - [x] PUT /api/tasks/:id
-  - [x] PATCH /api/tasks/:id/status
-- [x] 通知系统
-  - [x] GET /api/notifications
-  - [x] POST /api/notifications/read
-- [x] 全文搜索
-  - [x] GET /api/search
-  - [x] Meilisearch 索引同步
-  - [x] 文档索引自动更新
-
-### 📅 第四阶段（当前开发）
-
-- [x] 文档权限管理强化（GET/PUT ACL、前端 `AclManager` 验收）
-- ⛔️ 实时通讯模块（ChatController、WebSocket、未读消息规划已作废）
-- [x] 通知系统筛选功能（类型、文档ID、日期范围、未读状态筛选）✅
-- [x] 文档导入导出（Word / PDF / Markdown）✅
-- [x] 文档状态管理（状态字段、自动更新、状态筛选）✅
-- [x] 主页统计优化（协作文档、需要关注文档）✅
-- [ ] 通知偏好设置和 WebSocket 实时推送
-- [ ] 文档版本控制增强（自动/手动版本、diff、恢复体验）
-- [ ] 用户管理与运营（用户列表、权限调整、行为分析、满意度调查）
-
----
-
 ## 参考文档
 
 - [详细设计文档](./ARCH-02-详细设计.md) - 详细的技术实现、API 设计、数据库模型
 - [需求文档](./REQ-01-需求文档.md) - 项目需求文档
 - [API 设计文档](./API-01-API设计.md) - API 设计文档
-- [第一阶段开发指南](./PHASE-01-用户认证开发指南.md) - 第一阶段开发指南（用户认证）
-- [第二阶段开发指南](./PHASE-02-文档管理开发指南.md) - 第二阶段开发指南（文档管理、权限、版本）
-- [第三阶段开发指南](./PHASE-03-协作功能开发指南.md) - 第三阶段开发指南（实时协作、评论、任务与搜索）✅
-- [第四阶段开发指南](./PHASE-04-功能完善开发指南.md) - 第四阶段开发指南（通知增强、导入导出、版本与用户管理）
 - [项目启动指南](./GUIDE-01-项目启动指南.md) - 项目启动和运行指南

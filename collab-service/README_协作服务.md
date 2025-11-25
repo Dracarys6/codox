@@ -81,7 +81,15 @@ ws://localhost:1234?docId=123&token=your-jwt-token
 
 - `docId`: 文档 ID（必需）
 - `token`: 协作 JWT 令牌（必需，服务端会验证）
+ 
+## 🔔 通知通道
 
+- **地址**：`ws://localhost:1234/ws/notifications?token=<access_token>`
+- **验证**：使用 `cpp-service` 颁发的 Access Token，payload 必须包含 `user_id`
+- **多端支持**：同一账号可在多个标签页/设备保持在线，服务端自动管理连接集合
+- **前端配置**：`VITE_NOTIFICATION_WS_URL` 可覆盖默认地址，否则回退到 `/ws/notifications`
+
+成功连接后服务会推送 `Notification channel connected` 消息，并在连接关闭时自动清理。
 
 ## 🔧 配置说明
 
@@ -163,8 +171,9 @@ PORT=3000 npm start
 
 ## 📚 相关文档
 
+- [总体设计文档](../docs/ARCH-01-总体设计.md)
+- [API 设计文档](../docs/API-01-API设计.md)
 - [项目启动指南](../docs/GUIDE-01-项目启动指南.md)
-- [第三阶段开发指南](../docs/PHASE-03-协作功能开发指南.md)
 - [Yjs 官方文档](https://docs.yjs.dev/)
 - [@y/websocket-server 文档](https://github.com/yjs/y-websocket)
 

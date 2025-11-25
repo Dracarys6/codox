@@ -4,6 +4,40 @@
 
 ## 📋 功能总览
 
+## 🧱 项目结构梳理
+
+```目录
+codox/
+├── cpp-service/            # Drogon + PostgreSQL 主业务 API
+├── collab-service/         # y-websocket 协作/通知网关
+├── doc-converter-service/  # 文档导入导出转换器
+├── frontend/               # React + Tiptap Web 前端
+├── docs/                   # 需求/设计/项目文档
+├── scripts/                # 辅助脚本（启动、同步、数据）
+├── docker-compose.yml      # Meilisearch / MinIO 等支撑服务编排
+└── meili_data/             # Meilisearch 数据卷（开发态）
+```
+
+### 核心服务职责
+- `cpp-service`：提供认证、文档/版本/ACL、评论、任务、通知、搜索等 REST API，负责与 PostgreSQL、MinIO、Meilisearch、doc-converter 对接。
+- `collab-service`：基于 Yjs 的 WebSocket 服务，校验 `cpp-service` 下发的协作令牌，维护实时协作文档与通知推送通道。
+- `doc-converter-service`：Node.js/LibreOffice 套件完成 Word/PDF/Markdown 互转，供 `cpp-service` 与前端导入导出流程调用。
+- `frontend`：Vite + React + Tiptap 前端，整合鉴权、编辑器、评论/任务侧边栏、通知中心、导入导出等界面。
+
+### 服务之间的调用链路
+1. 用户首先通过 `frontend` 调用 `cpp-service` 进行登录，获取 JWT。
+2. 文档编辑时，前端向 `cpp-service` 申请协作令牌，再使用该令牌连接 `collab-service` 进入实时协作房间。
+3. 文档导入导出由 `frontend` 调用 `cpp-service` 的导入/导出 API，后者再转发至 `doc-converter-service` 完成格式转换并写入 MinIO。
+4. `cpp-service` 将文档元数据索引至 Meilisearch，并负责通知/任务事件持久化；`collab-service` 通过 WebSocket 将新通知推送到在线客户端。
+
+### 运行端口与依赖
+- `cpp-service`：HTTP `:8080`，依赖 PostgreSQL、MinIO、Meilisearch、doc-converter。
+- `collab-service`：WebSocket `:1234`，依赖 Redis（若开启持久化）与 `cpp-service` 颁发的协作令牌。
+- `doc-converter-service`：HTTP `:3002`，依赖本地 LibreOffice / pdf-lib 等二进制。
+- `frontend`：Vite Dev Server `:5173`，通过 `.env.local` 配置 `VITE_API_BASE_URL` 与 `VITE_WS_URL`。
+
+> 通过 `docker compose up -d meilisearch minio` 可快速拉起全文检索与对象存储；其余服务按各自 README 启动。
+
 ### ✅ 已完成功能
 
 #### 1. 用户认证与安全
@@ -84,12 +118,7 @@
 - [x] 搜索结果高亮
 - [x] 前端搜索页面
 
-#### 11. 实时通讯（已取消）
-- ⛔ 聊天室/消息/WebSocket 能力已移出交付范围
-
-#### 12. 文档导入导出
-- [x] Word 文档导入（.docx 转 HTML）
-- [x] PDF 文档导入（文本提取）
+#### 11. 文档导入导出
 - [x] Markdown 文档导入（转 HTML）
 - [x] Word 文档导出（HTML 转 .docx）
 - [x] PDF 文档导出（文本转 PDF）
@@ -99,30 +128,28 @@
 - [x] 文件大小限制（50MB）
 - [x] 权限验证（导出需要 viewer 权限）
 
-#### 13. 文档状态管理
+#### 12. 文档状态管理
 - [x] 文档状态字段（draft、saved、published、archived、locked）
 - [x] 状态手动更新
 - [x] 保存后自动更新状态（draft → saved）
 - [x] 状态筛选功能
 - [x] 前端状态显示和切换
 
-#### 14. 主页统计优化
+#### 13. 主页统计优化
 - [x] 协作文档统计（基于 ACL）
 - [x] 需要关注文档统计（基于未完成任务）
 - [x] 协作文档列表展示
 - [x] 需要关注文档列表展示
 - [x] 统计卡片交互优化
 
-### 🔄 开发中功能
-
-#### 第四阶段增强
-- [x] 通知系统筛选功能（类型、文档ID、日期范围、未读状态）✅
+#### 14.其他功能优化
+- [x] 通知系统筛选功能（类型、文档ID、日期范围、未读状态）
 - [x] WebSocket 实时通知推送
 - [x] 版本时间线可视化
 - [x] 版本差异高亮显示
-- [ ] 管理员用户管理
-- [ ] 用户行为分析
-- [ ] 满意度调查
+- [x] 管理员用户管理
+- [x] 用户行为分析
+- [x] 满意度调查
 
 ## 🛠️ 技术栈
 
@@ -156,7 +183,6 @@
 - 任务相关：4 个
 - 通知相关：3 个
 - 搜索相关：1 个
-- 聊天相关：0（已取消）
 
 ### 数据库表
 - 用户表：`user`、`user_profile`
@@ -165,7 +191,6 @@
 - 评论表：`comment`
 - 任务表：`task`
 - 通知表：`notification`
-- 聊天表：已取消
 
 ### 服务组件
 - **cpp-service**：C++ 后端 API 服务（端口 8080）
@@ -187,8 +212,6 @@
 - [API 设计文档](./API-01-API设计.md)
 - [总体设计文档](./ARCH-01-总体设计.md)
 - [详细设计文档](./ARCH-02-详细设计.md)
-- [用户搜索功能说明](./FEATURE-用户搜索功能.md)
-- [文档导入导出功能说明](./GUIDE-03-文档导入导出功能说明.md) ✅
 - [项目启动指南](./GUIDE-01-项目启动指南.md)
 - [项目总结](./PROJECT-项目总结.md)
 

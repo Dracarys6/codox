@@ -11,10 +11,13 @@
   - JWT 认证中间件
   - 密码加密（SHA-256 + Salt）
 
-- ✅ **文档管理** (`DocumentController`)
-  - 文档 CRUD 操作
-  - 文档权限管理（ACL）
-  - 文档版本控制
+- ✅ **文档管理 & 版本增强** (`DocumentController`)
+  - 文档 CRUD / 标签 / ACL
+  - 自动+手动版本（`GET/POST /api/docs/{id}/versions`）
+  - 版本时间线筛选、单版本详情、Diff、恢复
+- ✅ **文档导入导出**
+  - Markdown 导入、Word/PDF/Markdown 导出
+  - 对接 `doc-converter-service`、MinIO 快照
 
 - ✅ **实时协作** (`CollaborationController`)
   - 协作令牌生成
@@ -30,8 +33,8 @@
   - 任务状态管理
 
 - ✅ **通知系统** (`NotificationController`)
-  - 通知查询
-  - 通知已读标记
+  - 通知查询、筛选、已读标记、未读计数
+  - `NotificationWebSocket` 实时推送
 
 - ✅ **全文搜索** (`SearchController`)
   - Meilisearch 集成
@@ -39,6 +42,14 @@
 
 - ✅ **用户管理** (`UserController`)
   - 用户资料查询和更新
+
+- ✅ **管理员与运营** (`AdminUserController`)
+  - 用户列表查询/导出、状态与角色调整
+  - 活跃度、文档/评论/任务指标统计
+
+- ✅ **满意度反馈** (`FeedbackController`)
+  - 提交满意度与文本意见
+  - 管理端满意度统计 API
 
 ## 🛠️ 技术栈
 
@@ -129,13 +140,13 @@ sudo service postgresql start
 # 创建数据库和用户（如果尚未创建）
 sudo -u postgres psql << EOF
 CREATE DATABASE collab;
-CREATE USER collab WITH PASSWORD '20050430';
+CREATE USER collab WITH PASSWORD 'your_password';
 GRANT ALL PRIVILEGES ON DATABASE collab TO collab;
 \q
 EOF
 
 # 执行初始化脚本
-PGPASSWORD=20050430 psql -h 127.0.0.1 -p 5432 -U collab -d collab -f sql/init.sql
+PGPASSWORD=your_password psql -h 127.0.0.1 -p 5432 -U collab -d collab -f sql/init.sql
 ```
 
 ### 3. 配置服务
@@ -171,7 +182,7 @@ PGPASSWORD=20050430 psql -h 127.0.0.1 -p 5432 -U collab -d collab -f sql/init.sq
             "port": 5432,
             "dbname": "collab",
             "user": "collab",
-            "passwd": "20050430",
+            "passwd": "your_password",
             "is_fast": false,
             "connection_number": 10
         }

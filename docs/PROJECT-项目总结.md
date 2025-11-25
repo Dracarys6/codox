@@ -1,6 +1,6 @@
 # codox 项目总结
 
-> 最后更新：2025-11-23
+> 最后更新：2025-11-25
 
 ## 📊 项目概览
 
@@ -88,46 +88,44 @@
 
 ## 📁 项目结构
 
-```
+```目录
 codox/
-├── cpp-service/              # C++ 后端服务
-│   ├── src/
-│   │   ├── controllers/      # API 控制器
-│   │   │   ├── DocumentController.*  # 文档管理（含导入导出）
-│   │   │   └── ...
-│   │   ├── utils/            # 工具类
-│   │   └── main.cpp
-│   └── config.json
-├── collab-service/           # 协作服务
-│   └── server.ts
-├── doc-converter-service/    # 文档转换服务
+├── cpp-service/            # Drogon + PostgreSQL 主业务 API
+│   ├── src/controllers/    # Auth/Document/Comment/Task/Notification/Search*
+│   ├── src/utils/          # JwtUtil、PermissionUtils、NotificationUtils 等
+│   ├── sql/                # 初始化 & 迁移脚本
+│   ├── config.json         # 服务配置
+│   └── CMakeLists.txt
+├── collab-service/         # y-websocket 协作/通知网关
+│   ├── server.ts
+│   └── tsconfig.json
+├── doc-converter-service/  # 文档导入导出转换器
 │   ├── index.js
 │   └── package.json
-├── frontend/                 # React 前端
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── ImportModal.tsx      # 导入组件
-│   │   │   ├── ExportMenu.tsx       # 导出组件
-│   │   │   └── ...
-│   │   ├── pages/
-│   │   │   ├── HomePage.tsx         # 主页（含导入导出）
-│   │   │   ├── DocumentsPage.tsx    # 文档列表（含导入导出）
-│   │   │   └── EditorPage.tsx       # 编辑器（含导出）
-│   │   └── api/client.ts            # API 客户端
-│   └── package.json
-├── docs/                     # 项目文档
-│   ├── PHASE-04-功能完善开发指南.md
-│   ├── GUIDE-03-文档导入导出功能说明.md
+├── frontend/               # React + Tiptap 前端
+│   ├── src/components/DocumentEditor.tsx
+│   ├── src/api/client.ts
 │   └── ...
-└── README.md
+├── docs/                   # 需求/设计/指南
+├── scripts/                # 启动、数据、运维脚本
+├── docker-compose.yml      # Meilisearch / MinIO 等支撑服务编排
+└── meili_data/             # Meilisearch 数据卷（开发态）
 ```
+
+### 核心服务职责与链路
+- `cpp-service`：承载所有业务 API，与 PostgreSQL、MinIO、Meilisearch、doc-converter 通信。
+- `collab-service`：校验协作令牌并维护 Yjs 房间及通知推送。
+- `doc-converter-service`：负责 Word/PDF/Markdown 互转，供导入导出使用。
+- `frontend`：统一的 React + Vite 客户端，集成编辑器、评论/任务/通知模块。
+
+> 典型流程：前端登录 `cpp-service` 获取 JWT → 申请协作令牌连接 `collab-service` → 通过 `cpp-service` 调用 `doc-converter-service` 完成导入导出 → `cpp-service` 将元数据写入 PostgreSQL/MinIO 并索引至 Meilisearch。
 
 ## 📈 统计数据
 
 ### API 端点
 - 认证相关：3 个
 - 用户相关：3 个
-- 文档相关：19+ 个（包含导入导出 6 个、状态管理）
+- 文档相关：19+ 个
 - 协作相关：5 个
 - 评论相关：3 个
 - 任务相关：4 个
@@ -173,17 +171,11 @@ cd frontend && npm run dev
 - [详细设计文档](./ARCH-02-详细设计.md)
 - [功能清单](./PROJECT-功能清单.md)
 
-### 开发指南
-- [第一阶段：用户认证](./PHASE-01-用户认证开发指南.md) ✅
-- [第二阶段：文档管理](./PHASE-02-文档管理开发指南.md) ✅
-- [第三阶段：协作功能](./PHASE-03-协作功能开发指南.md) ✅
-- [第四阶段：功能完善](./PHASE-04-功能完善开发指南.md) 🔄
-
 ### 操作指南
 - [项目启动指南](./GUIDE-01-项目启动指南.md)
 - [文档导入导出功能说明](./GUIDE-03-文档导入导出功能说明.md) ✅
 
-## 🎉 最新更新（2025-11-23）
+## 🎉 发布亮点（2025-11-25）
 
 ### 文档状态管理 ✅
 
@@ -231,27 +223,23 @@ cd frontend && npm run dev
 - 文档列表：每个文档的操作列
 - 编辑页面：顶部工具栏
 
-## 🔜 下一步计划
+### 版本管理增强 ✅
 
-1. **通知系统增强**
-   - 通知过滤参数完善
-   - 用户偏好设置
-   - WebSocket 实时推送优化
+**完成内容：**
+- ✅ `GET/POST /api/docs/{id}/versions` 支持分页/筛选 + 手动创建版本（含 `change_summary`、来源标识）
+- ✅ `GET /api/docs/{id}/versions/{versionId}` 返回单个版本的完整快照、作者信息、HTML/纯文本
+- ✅ `POST /api/docs/{id}/versions/{versionId}/restore` 一键恢复并写入新的版本记录
+- ✅ `GET /api/docs/{id}/versions/{versionId}/diff` 输出前后差异（块级 + 高亮），供前端时间线对比
+- ✅ 前端 `VersionTimeline` 组件：支持时间过滤、创建者过滤、Diff 预览与直接恢复操作
 
-2. **版本管理增强**
-   - 版本时间线可视化
-   - 版本差异高亮显示
-   - 一键回滚功能
+### 管理员与运营中心 ✅
 
-3. **用户管理**
-   - 管理员用户列表
-   - 用户权限调整
-   - 用户行为分析
-
-4. **测试与优化**
-   - 端到端测试
-   - 性能优化
-   - 错误处理完善
+**完成内容：**
+- ✅ `GET /api/admin/users` 多条件（关键字、角色、状态、日期）分页查询 + CSV 导出
+- ✅ `PATCH /api/admin/users/{id}` / `POST /api/admin/users/{id}/roles` 支持启停账号、锁定、角色调整并写入审计
+- ✅ `GET /api/admin/user-analytics` 输出活跃度、文档/评论/任务/协作指标
+- ✅ `POST /api/feedback` & `GET /api/feedback/stat` 完整的满意度问卷收集与统计
+- ✅ 前端管理员页面：用户列表、详情抽屉、批量导出、运营指标可视化、满意度报表
 
 ## 📝 开发规范
 
@@ -269,9 +257,8 @@ cd frontend && npm run dev
 4. 更新相关文档
 5. 编写测试用例（如适用）
 
----
 
-**项目状态**：核心功能已完成，第四阶段增强功能开发中
+**项目状态**：全部核心能力已发布，可在生产环境部署运行（2025.11 Release）
 
-**最后更新**：2025-11-23
+**最后更新**：2025-11-25
 
