@@ -338,7 +338,6 @@ http GET localhost:8080/api/documents Authorization:"Bearer $TOKEN"
 
 - [项目启动指南](../docs/GUIDE-01-项目启动指南.md)
 - [后端 API 测试方法](../docs/GUIDE-02-后端API测试方法.md)
-- [第三阶段开发指南](../docs/PHASE-03-协作功能开发指南.md)
 
 ## 🔒 安全特性
 
