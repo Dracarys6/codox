@@ -28,4 +28,5 @@ docker/.env
 meili_data/
 
 # 
+docker-compose.yml
 docs/completed/

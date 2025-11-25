@@ -1,6 +1,6 @@
 # 文档转换服务（doc-converter-service）
 
-Node.js + Express 的格式转换微服务，为 `cpp-service` 与前端导入/导出流程提供 Word / PDF / Markdown 能力，默认端口 `3002`。
+Node.js + Express 的格式转换微服务，为 `cpp-service` 与前端导入/导出流程提供 Word / PDF / Markdown 能力，默认端口为 `3002`。
 
 ## 📦 核心特性
 - ⏫ **上传限制**：内置 `multer` 内存存储，单文件最大 50MB。
