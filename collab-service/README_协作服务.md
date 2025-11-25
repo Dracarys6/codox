@@ -81,7 +81,7 @@ ws://localhost:1234?docId=123&token=your-jwt-token
 
 - `docId`: 文档 ID（必需）
 - `token`: 协作 JWT 令牌（必需，服务端会验证）
- 
+
 ## 🔔 通知通道
 
 - **地址**：`ws://localhost:1234/ws/notifications?token=<access_token>`

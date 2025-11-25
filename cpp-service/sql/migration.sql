@@ -192,23 +192,9 @@ COMMENT ON COLUMN document.status IS '文档状态: draft(草稿), saved(已保�
 -- 3. 通知增强
 -- ============================================
 
-CREATE TABLE IF NOT EXISTS notification_setting (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-    notification_type VARCHAR(50) NOT NULL,
-    email_enabled BOOLEAN NOT NULL DEFAULT true,
-    push_enabled BOOLEAN NOT NULL DEFAULT true,
-    in_app_enabled BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(user_id, notification_type)
-);
-
 CREATE INDEX IF NOT EXISTS idx_notification_user_type ON notification(user_id, type);
 CREATE INDEX IF NOT EXISTS idx_notification_created_at ON notification(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notification_user_created ON notification(user_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_notification_setting_user ON notification_setting(user_id);
 
 -- ============================================
 -- 4. 管理员用户管理与满意度反馈

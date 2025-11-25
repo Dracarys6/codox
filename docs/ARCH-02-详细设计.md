@@ -1,8 +1,7 @@
 # 详细设计文档
 
-> **文档状态（2025-11-24）**
+> **文档状态（2025-11-25）**
 > - 作用：提供数据库、接口、配置、部署的细粒度说明，是研发与运维协作的主文档。
-> - 最近更新：补充版本控制链路（HTML 存储 + Diff 兼容）、协作自动保存 60s 以及通知/聊天等模块的最终实现与取舍。
 > - 关联：总体思路见 `ARCH-01`，接口使用规范可对照 `API-01`。
 
 本文档描述多人在线协作编辑系统的详细技术实现，包括数据库设计、API 规格、代码结构、配置说明和部署指南。
@@ -33,6 +32,10 @@ CREATE TABLE "user" (
   phone VARCHAR(32) UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role VARCHAR(32) NOT NULL DEFAULT 'viewer', -- admin/editor/viewer
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+  remark TEXT,
+  last_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -44,6 +47,15 @@ CREATE TABLE user_profile (
   bio TEXT
 );
 
+CREATE TABLE password_reset_token (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  token_hash VARCHAR(128) NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- 文档与访问控制
 CREATE TABLE document (
   id BIGSERIAL PRIMARY KEY,
@@ -51,6 +63,10 @@ CREATE TABLE document (
   title VARCHAR(255) NOT NULL,
   is_locked BOOLEAN NOT NULL DEFAULT FALSE,
   last_published_version_id BIGINT,
+  status VARCHAR(16) NOT NULL DEFAULT 'draft',
+  version_strategy VARCHAR(16) NOT NULL DEFAULT 'manual',
+  version_auto_interval_minutes INTEGER NOT NULL DEFAULT 30,
+  version_retention_limit INTEGER DEFAULT 50,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -66,10 +82,15 @@ CREATE TABLE doc_acl (
 CREATE TABLE document_version (
   id BIGSERIAL PRIMARY KEY,
   doc_id BIGINT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
+  version_number INTEGER NOT NULL DEFAULT 1,
   snapshot_url TEXT NOT NULL,
   snapshot_sha256 CHAR(64) NOT NULL,
   size_bytes BIGINT NOT NULL,
   created_by BIGINT NOT NULL REFERENCES "user"(id),
+  change_summary TEXT,
+  source VARCHAR(20) NOT NULL DEFAULT 'auto',
+  content_text TEXT,
+  content_html TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -119,41 +140,40 @@ CREATE TABLE notification (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 实时通讯（已取消，相关数据表不再创建）
-
--- 通知偏好
-CREATE TABLE notification_setting (
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  notification_type VARCHAR(50) NOT NULL,
-  email_enabled BOOLEAN DEFAULT TRUE,
-  push_enabled BOOLEAN DEFAULT TRUE,
-  in_app_enabled BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(user_id, notification_type)
+-- 用户管理
+CREATE TABLE admin_audit_log (
+    id BIGSERIAL PRIMARY KEY,
+    admin_id BIGINT REFERENCES "user"(id) ON DELETE SET NULL,
+    target_user_id BIGINT REFERENCES "user"(id) ON DELETE SET NULL,
+    action VARCHAR(64) NOT NULL,
+    payload JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 用户行为聚合（用于运营分析，按需开启）
-CREATE TABLE user_activity_daily (
-  id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  activity_date DATE NOT NULL,
-  login_count INTEGER DEFAULT 0,
-  edit_count INTEGER DEFAULT 0,
-  comment_count INTEGER DEFAULT 0,
-  task_updates INTEGER DEFAULT 0,
-  UNIQUE(user_id, activity_date)
+-- 用户反馈
+CREATE TABLE user_feedback (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    dimension VARCHAR(100) NOT NULL,
+    score INTEGER NOT NULL CHECK (score BETWEEN 1 AND 5),
+    comment TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 索引
-CREATE INDEX idx_document_owner_updated ON document(owner_id, updated_at DESC);
-CREATE INDEX idx_doc_tag_tag ON doc_tag(tag_id);
-CREATE INDEX idx_comment_doc_created ON comment(doc_id, created_at DESC);
+CREATE INDEX idx_document_owner_updated ON document(owner_id, updated_at DESC); --我的文档列表按最近更新排序
+CREATE INDEX idx_doc_tag_tag ON doc_tag(tag_id); --按标签筛选文档
+CREATE INDEX idx_document_version_doc_version ON document_version(doc_id, version_number DESC);
+CREATE INDEX idx_comment_doc_created ON comment(doc_id, created_at DESC); --文档评论区按最新评论展示
 CREATE INDEX idx_task_doc_status ON task(doc_id, status);
+CREATE INDEX idx_notification_user_type ON notification(user_id, type);
+CREATE INDEX idx_notification_created_at ON notification(created_at DESC);
 CREATE INDEX idx_notification_user_created ON notification(user_id, created_at DESC);
-CREATE INDEX idx_notification_setting_user_type ON notification_setting(user_id, notification_type);
-CREATE INDEX idx_user_activity_daily_date ON user_activity_daily(activity_date);
+CREATE INDEX idx_password_reset_token_user ON password_reset_token(user_id);
+CREATE INDEX idx_admin_audit_log_admin ON admin_audit_log(admin_id);
+CREATE INDEX idx_admin_audit_log_target ON admin_audit_log(target_user_id);
+CREATE INDEX idx_user_feedback_user ON user_feedback(user_id);
+CREATE INDEX idx_user_feedback_dimension ON user_feedback(dimension);
 ```
 
 ### 设计要点
@@ -616,39 +636,6 @@ Authorization: Bearer <access_token>
 }
 ```
 
-### 实时通讯 API（已取消）
-
-> 原计划提供的聊天室/消息/已读/WebSocket 接口已移除，不再对外暴露 `POST /api/chat/*` 与 `/ws/chat` 相关能力。
-
-### 通知增强 & 偏好设置 API
-
-#### 带过滤条件的通知列表
-
-```http
-GET /api/notifications?type=comment&doc_id=18&unread_only=true&start_date=2025-11-01
-Authorization: Bearer <access_token>
-```
-
-#### 通知偏好
-
-```http
-GET /api/notification-settings
-Authorization: Bearer <access_token>
-
-PUT /api/notification-settings/{type}
-Authorization: Bearer <access_token>
-Content-Type: application/json
-
-{
-  "email_enabled": true,
-  "push_enabled": false,
-  "in_app_enabled": true
-}
-```
-
-- `notification_type` 例如 `comment`, `task_assigned`, `permission_changed`
-- 后端在发送通知时读取设置并决定投递渠道
-
 ### 文档导入导出 API
 
 | Endpoint | 方法 | 说明 |
@@ -661,7 +648,7 @@ Content-Type: application/json
 - 后端可内嵌转换库或通过 `doc-converter-service`（Node.js）桥接
 - 导入成功后记录版本信息与导入来源
 
-### 管理员 / 用户运营 API（规划）
+### 管理员 / 用户运营 API
 
 #### 用户列表
 
@@ -670,7 +657,7 @@ GET /api/admin/users?role=editor&status=active&keyword=alice&page=1&page_size=20
 Authorization: Bearer <admin_token>
 ```
 
-返回字段：基本信息、角色、最近登录、文档数量、是否锁定等。
+返回字段：基本信息、角色、状态、最近登录、文档数量、锁定标记、备注等。
 
 #### 权限调整
 
@@ -684,7 +671,7 @@ Content-Type: application/json
 }
 ```
 
-所有变更写入审计日志。
+所有变更写入 `admin_audit_log`。
 
 #### 用户行为分析
 
@@ -693,7 +680,7 @@ GET /api/admin/user-analytics?from=2025-11-01&to=2025-11-30&dimension=team
 Authorization: Bearer <admin_token>
 ```
 
-数据来源 `user_activity_daily`，用于生成活跃度、编辑次数等图表。
+后端会聚合 `document` / `comment` / `task` / `notification` / `user_feedback` 的统计结果并缓存，用于生成活跃度、编辑次数、任务流转等图表。
 
 #### 满意度 / 反馈收集
 
@@ -709,7 +696,7 @@ Content-Type: application/json
 }
 ```
 
-管理员可通过 `GET /api/feedback/stat` 查看统计。
+管理员可通过 `GET /api/feedback/stat` 查看各维度满意度占比与 Top 意见。
 
 
 ### 搜索相关 API
@@ -756,37 +743,27 @@ cpp-service/
 ├── src/
 │   ├── main.cpp                    # 程序入口
 │   ├── controllers/                # API 控制器
-│   │   ├── AuthController.h/cc    # 认证相关 API
-│   │   ├── HealthController.h/cc  # 健康检查
-│   │   ├── UserController.h/cc   # 用户相关 API
-│   │   ├── DocumentController.h/cc # 文档相关 API
-│   │   ├── CollaborationController.h/cc # 协作相关 API
-│   │   ├── CommentController.h/cc # 评论相关 API
-│   │   ├── TaskController.h/cc   # 任务相关 API
-│   │   ├── NotificationController.h/cc # 通知相关 API
-│   │   └── SearchController.h/cc # 搜索相关 API
-│   ├── middleware/                 # 中间件/过滤器
-│   │   └── JwtAuthFilter.h/cc     # JWT 认证过滤器
-│   ├── services/                   # 业务逻辑层
-│   │   ├── AuthService.h/cc
-│   │   ├── DocumentService.h/cc
-│   │   └── SearchService.h/cc
-│   ├── repositories/               # 数据访问层
-│   │   ├── UserRepository.h/cc
-│   │   ├── DocumentRepository.h/cc
-│   │   └── VersionRepository.h/cc
-│   ├── models/                     # 数据模型
-│   │   ├── User.h
-│   │   └── Document.h
-│   └── utils/                       # 工具类
-│       ├── JwtUtil.h/cc            # JWT 工具
-│       ├── PasswordUtils.h/cc      # 密码加密工具
-│       ├── ResponseUtils.h/cc      # 响应工具
-│       ├── PermissionUtils.h/cc    # 权限检查工具
-│       ├── NotificationUtils.h/cc  # 通知工具
-│       └── DbUtils.h/cc            # 数据库工具
+│   │   ├── AuthController.*            # 认证 / 登录 / 刷新
+│   │   ├── UserController.*            # 个人资料
+│   │   ├── DocumentController.*        # 文档 / 版本 / 状态 / 导入导出
+│   │   ├── CollaborationController.*   # 协作令牌 / 快照回调
+│   │   ├── CommentController.*         # 评论
+│   │   ├── TaskController.*            # 任务
+│   │   ├── NotificationController.*    # 通知列表 / 未读
+│   │   ├── SearchController.*          # 全文检索
+│   │   ├── AdminUserController.*       # 管理员用户管理 / 运营分析
+│   │   ├── FeedbackController.*        # 满意度反馈
+│   │   ├── NotificationWebSocket.*     # 通知 WebSocket 推送
+│   │   └── HealthController.*          # 健康检查
+│   ├── middleware/
+│   │   └── JwtAuthFilter.*             # JWT 认证过滤器
+│   ├── services/                       # 业务逻辑层（如 SearchService 等）
+│   ├── repositories/                   # 数据访问封装
+│   └── utils/
+│       ├── JwtUtil.* / PasswordUtils.* / ResponseUtils.* / PermissionUtils.* 等
 ├── sql/
-│   └── init.sql                    # 数据库初始化脚本
+│   ├── init.sql                      # 初始建表脚本
+│   └── migration.sql                 # 一体化迁移脚本
 ├── config.json                     # 服务配置文件
 └── CMakeLists.txt                  # CMake 配置
 ```
@@ -895,7 +872,7 @@ public:
       "port": 5432,
       "dbname": "collab",
       "user": "collab",
-      "passwd": "20050430",
+      "passwd": "my_password",
       "is_fast": false,
       "connection_number": 5,
       "characterSet": "utf8"
@@ -936,11 +913,7 @@ DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_NAME=collab
 DB_USER=collab
-DB_PASSWORD=20050430
-
-# Redis
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
+DB_PASSWORD=my_password_here
 
 # JWT
 JWT_SECRET=your-secret-key-here
@@ -1019,13 +992,13 @@ sudo service postgresql start
 # 创建数据库和用户
 sudo -u postgres psql << EOF
 CREATE DATABASE collab;
-CREATE USER collab WITH PASSWORD '20050430';
+CREATE USER collab WITH PASSWORD 'your_password';
 GRANT ALL PRIVILEGES ON DATABASE collab TO collab;
 \q
 EOF
 
 # 执行初始化脚本
-PGPASSWORD=20050430 psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/init.sql
+PGPASSWORD=your_password psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/init.sql
 ```
 
 ### 编译项目
@@ -1113,10 +1086,6 @@ Client -> POST /api/collab/token
         -> 触发发布流程
 ```
 
-### 6. 实时通讯消息流程（已取消）
-
-> 聊天室消息写入/广播/断线重连流程已从方案中删除，不再通过 `ChatController` 或 `chat-handler` 提供支持。
-
 ---
 
 ## 错误码规范
@@ -1161,7 +1130,7 @@ bool verifyPassword(const std::string& password, const std::string& storedHash);
 - **算法**：HS256
 - **Access Token**：15 分钟有效期
 - **Refresh Token**：30 天有效期
-- **Token 存储**：可选的 Redis 黑名单机制
+- **Token 状态**：锁定 / 停用用户通过登录接口拦截
 
 ### 输入验证
 
@@ -1169,15 +1138,6 @@ bool verifyPassword(const std::string& password, const std::string& storedHash);
 - 密码强度检查（最少 8 位）
 - SQL 注入防护（参数化查询）
 - XSS 防护（输出转义）
-
-### 速率限制
-
-建议使用 Redis 实现：
-
-```cpp
-// 示例：每分钟最多 10 次请求
-bool checkRateLimit(const std::string& key, int maxRequests, int windowSeconds);
-```
 
 ### 文件上传安全
 
@@ -1225,11 +1185,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
@@ -1249,29 +1204,6 @@ services:
       - redis
     volumes:
       - ./cpp-service/config.json:/app/config.json
-```
-
-### 反向代理配置（Nginx）
-
-```nginx
-server {
-    listen 80;
-    server_name api.example.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location /ws {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
 ```
 
 ### 生产环境注意事项
@@ -1354,4 +1286,3 @@ ResponseUtils::sendError(callback, "错误信息", k400BadRequest);
 - [API 设计文档](./API-01-API设计.md) - API 设计文档
 - [项目启动指南](./GUIDE-01-项目启动指南.md) - 项目启动和运行指南
 - [后端 API 测试方法](./GUIDE-02-后端API测试方法.md) - API 测试方法
-- [开发提示与最佳实践](./completed/DEV-07-开发提示与最佳实践.md) - 开发规范和最佳实践
