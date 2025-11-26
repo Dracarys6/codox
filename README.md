@@ -140,7 +140,6 @@ EOF
 # 执行初始化脚本（建表）
 PGPASSWORD=your_password psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/init.sql
 
-# 如需从旧版本升级到 2025.11，可额外执行整体迁移
 PGPASSWORD=your_password psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/migration.sql
 ```
 

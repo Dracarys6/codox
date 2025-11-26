@@ -120,3 +120,24 @@ CREATE INDEX idx_doc_tag_tag ON doc_tag(tag_id);
 CREATE INDEX idx_comment_doc_created ON comment(doc_id, created_at DESC);
 CREATE INDEX idx_task_doc_status ON task(doc_id, status);
 
+-- 权限授予，确保应用账号可访问
+DO
+$$
+DECLARE
+    target_role TEXT := 'collab';
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_roles WHERE rolname = target_role
+    ) THEN
+        RAISE NOTICE 'Role "%" does not exist, skip grants', target_role;
+        RETURN;
+    END IF;
+
+    EXECUTE format('GRANT USAGE ON SCHEMA public TO %I;', target_role);
+    EXECUTE format('GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO %I;', target_role);
+    EXECUTE format('GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO %I;', target_role);
+    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO %I;', target_role);
+    EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO %I;', target_role);
+END;
+$$ LANGUAGE plpgsql;
+

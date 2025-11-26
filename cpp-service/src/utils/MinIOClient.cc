@@ -8,10 +8,13 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <array>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
+#include <memory>
 #include <sstream>
+#include <stdexcept>
 
 namespace {
 /**
@@ -49,12 +52,20 @@ std::vector<unsigned char> hmacSha256(const std::string& key, const std::string&
  * 计算 SHA256 哈希
  */
 std::vector<unsigned char> sha256(const std::string& data) {
-    unsigned char hash[SHA256_DIGEST_LENGTH];
-    SHA256_CTX sha256;
-    SHA256_Init(&sha256);
-    SHA256_Update(&sha256, data.c_str(), data.length());
-    SHA256_Final(hash, &sha256);
-    return std::vector<unsigned char>(hash, hash + SHA256_DIGEST_LENGTH);
+    EVP_MD_CTX* ctx = EVP_MD_CTX_new();
+    if (!ctx) {
+        throw std::runtime_error("Failed to allocate EVP_MD_CTX");
+    }
+    auto ctxDeleter = [](EVP_MD_CTX* ptr) { EVP_MD_CTX_free(ptr); };
+    std::unique_ptr<EVP_MD_CTX, decltype(ctxDeleter)> ctxGuard(ctx, ctxDeleter);
+
+    std::array<unsigned char, SHA256_DIGEST_LENGTH> hash{};
+    if (EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) != 1 || EVP_DigestUpdate(ctx, data.data(), data.size()) != 1 ||
+        EVP_DigestFinal_ex(ctx, hash.data(), nullptr) != 1) {
+        throw std::runtime_error("Failed to compute SHA256 hash");
+    }
+
+    return std::vector<unsigned char>(hash.begin(), hash.end());
 }
 
 /**

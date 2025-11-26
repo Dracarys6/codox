@@ -1,7 +1,7 @@
 #include "AuthController.h"
 
 #include <drogon/drogon.h>
-#include <jsoncpp/json/json.h>
+#include <json/json.h>
 
 #include <memory>
 #include <regex>

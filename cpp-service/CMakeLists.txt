@@ -2,21 +2,57 @@ cmake_minimum_required(VERSION 3.14)
 project(cpp-service)
 
 # 强制 C++17 标准
-set(CMAKE_CXX_FLAGS "-std=c++17 -Wall ${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Drogon 安装路径
-set(DROGON_INSTALL_PREFIX /home/dracarys/drogon/install)
-include_directories(${DROGON_INSTALL_PREFIX}/include)
-link_directories(${DROGON_INSTALL_PREFIX}/lib)
+# Homebrew (macOS) 默认不会将 libpq 暴露给系统路径，手动提供一次路径提示
+if(APPLE)
+    set(_brew_libpq_prefix "/opt/homebrew/opt/libpq")
+    if(NOT DEFINED PG_INCLUDE_DIRS AND EXISTS "${_brew_libpq_prefix}/include")
+        set(PG_INCLUDE_DIRS "${_brew_libpq_prefix}/include" CACHE PATH "libpq include dir" FORCE)
+    endif()
+    if(NOT DEFINED PG_LIBRARIES AND EXISTS "${_brew_libpq_prefix}/lib/libpq.dylib")
+        set(PG_LIBRARIES "${_brew_libpq_prefix}/lib/libpq.dylib" CACHE FILEPATH "libpq library" FORCE)
+    endif()
+    if(NOT DEFINED PostgreSQL_ROOT AND EXISTS "${_brew_libpq_prefix}")
+        set(PostgreSQL_ROOT "${_brew_libpq_prefix}" CACHE PATH "PostgreSQL root dir" FORCE)
+    endif()
+endif()
 
-# jwt-cpp 库（系统安装）
-set(JWT_CPP_ROOT "/usr/local")
-include_directories(${JWT_CPP_ROOT}/include)
-
-# jsoncpp 库
+# 依赖检测
+find_package(Drogon CONFIG REQUIRED)
+find_package(jwt-cpp CONFIG REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)
-include_directories(${JSONCPP_INCLUDE_DIRS})
+
+find_library(PQXX_LIBRARY
+    NAMES pqxx
+    REQUIRED
+    HINTS
+        /opt/homebrew/opt/libpqxx/lib
+        /usr/local/lib
+)
+find_library(PQ_LIBRARY
+    NAMES pq
+    REQUIRED
+    HINTS
+        /opt/homebrew/opt/libpq/lib
+        /usr/local/lib
+)
+find_library(SQLITE3_LIBRARY
+    NAMES sqlite3
+    REQUIRED
+    HINTS
+        /opt/homebrew/opt/sqlite/lib
+        /usr/lib
+        /usr/local/lib
+)
+find_library(UUID_LIBRARY NAMES uuid)
+
+include_directories(/opt/homebrew/include)
 link_directories(${JSONCPP_LIBRARY_DIRS})
 
 # 源码文件
@@ -26,26 +62,23 @@ file(GLOB_RECURSE ALL_SOURCES
     "src/*.cpp"
 )
 
-# 生成可执行文件
 add_executable(${PROJECT_NAME} ${ALL_SOURCES})
 
-# 链接所有依赖
-target_link_libraries(${PROJECT_NAME}
+target_include_directories(${PROJECT_NAME}
     PRIVATE
-    # Drogon 核心库
-    drogon
-    trantor
-    # 数据库相关
-    pqxx       # PostgreSQL C++ 库
-    pq         # PostgreSQL 核心库
-    sqlite3    # SQLite3 库
-    # 其他系统库
-    ${JSONCPP_LIBRARIES}  # jsoncpp
-    ssl         # OpenSSL（加密）
-    crypto      # 加密算法
-    pthread     # 线程库
-    dl          # 动态链接库管理（dlopen/dlclose）
-    z           # zlib（压缩，Drogon 可能用到）
-    uuid
+    ${JSONCPP_INCLUDE_DIRS}
 )
 
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+    Drogon::Drogon
+    jwt-cpp::jwt-cpp
+    ${PQXX_LIBRARY}
+    ${PQ_LIBRARY}
+    ${SQLITE3_LIBRARY}
+    ${JSONCPP_LIBRARIES}
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    Threads::Threads
+    ${UUID_LIBRARY}
+)

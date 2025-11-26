@@ -105,7 +105,7 @@ cpp-service/
 ### 1. 安装依赖
 
 ```bash
-# 安装系统依赖
+# 安装系统依赖 (Ubuntu / Debian)
 sudo apt update
 sudo apt install -y \
     build-essential \
@@ -118,15 +118,18 @@ sudo apt install -y \
     postgresql \
     postgresql-contrib
 
-# 安装 Drogon（需要从源码编译）
-# 参考：https://github.com/drogonframework/drogon
-
-# 安装 jwt-cpp
-git clone https://github.com/Thalhammer/jwt-cpp.git
-cd jwt-cpp
-mkdir build && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
-make && sudo make install
+# Drogon 与 jwt-cpp 建议使用包管理器或统一安装目录
+# 例如：
+#   Ubuntu: sudo apt install drogon libjwt-cpp-dev
+#   macOS:  brew install drogon jwt-cpp
+#   其他发行版: 参考官方文档，安装到同一前缀 (如 ~/.local)
+#
+# 若需源码编译，可统一安装到 $HOME/.local 后在构建时指定 CMAKE_PREFIX_PATH：
+# git clone https://github.com/drogonframework/drogon.git
+# cmake -S . -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local && cmake --build build --target install
+#
+# git clone https://github.com/Thalhammer/jwt-cpp.git
+# cmake -S . -B build -DCMAKE_INSTALL_PREFIX=$HOME/.local && cmake --build build --target install
 ```
 
 ### 2. 配置数据库
@@ -194,10 +197,13 @@ PGPASSWORD=your_password psql -h 127.0.0.1 -p 5432 -U collab -d collab -f sql/in
 
 ```bash
 cd cpp-service
-mkdir -p build && cd build
-cmake ..
-make -j$(nproc)
+mkdir -p build
+cmake -B build -S . \
+  -DCMAKE_PREFIX_PATH="/path/to/drogon;/path/to/jwt-cpp"
+cmake --build build -j$(nproc)
 ```
+
+> `CMAKE_PREFIX_PATH` 指向 Drogon 与 jwt-cpp 的安装前缀；若使用系统包管理器并安装在系统默认路径，可省略该参数。
 
 ### 5. 运行
 
