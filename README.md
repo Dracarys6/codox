@@ -110,18 +110,12 @@ sudo apt install -y \
     libjsoncpp-dev \
     postgresql \
     postgresql-contrib \
-    git
+    git \
+    jwt-cpp \
 
 # 安装 Drogon（需要从源码编译）
 # 参考：https://github.com/drogonframework/drogon
 
-# 安装 jwt-cpp
-git clone https://github.com/Thalhammer/jwt-cpp.git
-cd jwt-cpp
-mkdir build && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local
-make && sudo make install
-```
 
 ### 2. 初始化数据库
 

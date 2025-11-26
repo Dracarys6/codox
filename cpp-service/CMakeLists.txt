@@ -9,10 +9,6 @@ set(DROGON_INSTALL_PREFIX /home/dracarys/drogon/install)
 include_directories(${DROGON_INSTALL_PREFIX}/include)
 link_directories(${DROGON_INSTALL_PREFIX}/lib)
 
-# jwt-cpp 库（系统安装）
-set(JWT_CPP_ROOT "/usr/local")
-include_directories(${JWT_CPP_ROOT}/include)
-
 # jsoncpp 库
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED jsoncpp)

@@ -1,7 +1,7 @@
 #include "AuthController.h"
 
 #include <drogon/drogon.h>
-#include <jsoncpp/json/json.h>
+#include <json/json.h>
 
 #include <memory>
 #include <regex>
@@ -208,12 +208,9 @@ void AuthController::loginHandler(const HttpRequestPtr& req, std::function<void(
                 auto responseData = std::make_shared<Json::Value>(responseJson);
                 db->execSqlAsync(
                         "UPDATE \"user\" SET last_login_at = NOW(), updated_at = NOW() WHERE id = $1",
-                        [=](const drogon::orm::Result&) {
-                            ResponseUtils::sendSuccess(*callbackPtr, *responseData);
-                        },
+                        [=](const drogon::orm::Result&) { ResponseUtils::sendSuccess(*callbackPtr, *responseData); },
                         [=](const drogon::orm::DrogonDbException& e) {
-                            ResponseUtils::sendError(*callbackPtr,
-                                                     "Database error: " + std::string(e.base().what()),
+                            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
                         std::to_string(userId));
@@ -337,8 +334,7 @@ void AuthController::forgotPasswordHandler(const HttpRequestPtr& req,
                             ResponseUtils::sendSuccess(*callbackPtr, *responsePtr);
                         },
                         [=](const drogon::orm::DrogonDbException& e) mutable {
-                            ResponseUtils::sendError(*callbackPtr,
-                                                     "Database error: " + std::string(e.base().what()),
+                            ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
                         std::to_string(userId), tokenHash, ttlMinutesStr);
