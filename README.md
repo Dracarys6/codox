@@ -76,10 +76,7 @@ codox/
 │   ├── REQ-01-需求文档.md / REQ-01-需求完成文档.md
 │   ├── PROJECT-功能清单.md / PROJECT-项目总结.md
 │   ├── API-01-API设计.md
-│   └── GUIDE-01-项目启动指南.md / GUIDE-03-文档导入导出功能说明.md
-├── scripts/                    # 辅助脚本
-├── docker-compose.yml          # Meilisearch / MinIO 等支撑服务
-└── meili_data/                 # Meilisearch 数据卷（开发环境）
+│   └── GUIDE-01-项目启动指南.md
 ```
 
 ## 🚀 快速开始
@@ -134,7 +131,6 @@ EOF
 # 执行初始化脚本（建表）
 PGPASSWORD=your_password psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/init.sql
 
-# 如需从旧版本升级到 2025.11，可额外执行整体迁移
 PGPASSWORD=your_password psql -h 127.0.0.1 -p 5432 -U collab -d collab -f cpp-service/sql/migration.sql
 ```
 

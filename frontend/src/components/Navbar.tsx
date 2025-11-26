@@ -23,7 +23,7 @@ const navItems: NavItem[] = [
     },
     {
         label: '最近文档',
-        to: '/docs?tab=recent',
+        to: '/documents?tab=recent',
         icon: (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l3 1.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -32,7 +32,7 @@ const navItems: NavItem[] = [
     },
     {
         label: '收藏',
-        to: '/docs?tab=favorites',
+        to: '/documents?tab=favorites',
         icon: (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.48 3.499a1.75 1.75 0 011.04 0l6.518 2.13a1.75 1.75 0 011.204 1.664v9.414a1.75 1.75 0 01-1.204 1.664l-6.518 2.13a1.75 1.75 0 01-1.04 0l-6.518-2.13A1.75 1.75 0 013 16.707V7.293a1.75 1.75 0 011.204-1.664l6.518-2.13z" />
@@ -42,7 +42,7 @@ const navItems: NavItem[] = [
     },
     {
         label: '回收站',
-        to: '/docs?tab=trash',
+        to: '/documents?tab=trash',
         icon: (
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4h6m-8 3h10M9 4V3a1 1 0 011-1h4a1 1 0 011 1v1m4 3v12a2 2 0 01-2 2H7a2 2 0 01-2-2V7h14z" />
@@ -112,8 +112,8 @@ export function Navbar() {
         if (item.exact) {
             return location.pathname === item.to;
         }
-        if (item.to.startsWith('/docs')) {
-            return location.pathname.startsWith('/docs');
+        if (item.to.startsWith('/documents')) {
+            return location.pathname.startsWith('/documents');
         }
         return location.pathname.startsWith(item.to);
     };
@@ -136,7 +136,7 @@ export function Navbar() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.4} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                                 </svg>
                             </div>
-                            <span className="hidden sm:block text-[20px] font-bold tracking-wide">DocSync</span>
+                            <span className="hidden sm:block text-[20px] font-bold tracking-wide">Codox</span>
                         </Link>
 
                         {user && (
@@ -163,21 +163,16 @@ export function Navbar() {
 
                     {user ? (
                         <div className="flex items-center gap-4">
-                            <div className="hidden lg:block relative">
-                                <input
-                                    type="text"
-                                    placeholder="搜索文档..."
-                                    className="w-64 rounded-xl border border-slate-200 bg-white/80 px-10 py-2.5 text-sm text-slate-600 shadow-inner focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                                />
-                                <svg
-                                    className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
+                            <button
+                                type="button"
+                                onClick={() => navigate('/search')}
+                                className="hidden lg:inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-2.5 text-sm font-medium text-slate-600 shadow-inner transition hover:border-blue-300 hover:text-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                            >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35m1.6-4.15a6 6 0 11-12 0 6 6 0 0112 0z" />
                                 </svg>
-                            </div>
+                                搜索文档
+                            </button>
                             <button
                                 onClick={() => navigate('/docs/new')}
                                 className="hidden md:inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-500/30 transition-transform hover:-translate-y-0.5 hover:shadow-xl"
@@ -231,7 +226,7 @@ export function Navbar() {
                                                 个人资料
                                             </Link>
                                             <Link
-                                                to="/docs"
+                                                to="/documents"
                                                 onClick={() => setShowUserMenu(false)}
                                                 className="flex items-center gap-2 rounded-lg px-4 py-2 transition hover:bg-blue-50 hover:text-blue-600"
                                             >

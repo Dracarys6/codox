@@ -12,10 +12,10 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <regex>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
-#include <regex>
 
 #include "../repositories/VersionRepository.h"
 #include "../services/SearchService.h"
@@ -1864,18 +1864,19 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
                         return;
                     }
 
-                    std::string targetText = ensurePlainText(
-                            targetResult[0]["content_text"].isNull()
-                                    ? ""
-                                    : targetResult[0]["content_text"].as<std::string>(),
-                            targetResult[0]["content_html"].isNull()
-                                    ? ""
-                                    : targetResult[0]["content_html"].as<std::string>());
+                    std::string targetText =
+                            ensurePlainText(targetResult[0]["content_text"].isNull()
+                                                    ? ""
+                                                    : targetResult[0]["content_text"].as<std::string>(),
+                                            targetResult[0]["content_html"].isNull()
+                                                    ? ""
+                                                    : targetResult[0]["content_html"].as<std::string>());
 
                     // 6. 获取基础版本内容
                     if (baseVersionId > 0) {
                         db->execSqlAsync(
-                                "SELECT content_text, content_html FROM document_version WHERE id = $1::bigint AND doc_id = "
+                                "SELECT content_text, content_html FROM document_version WHERE id = $1::bigint AND "
+                                "doc_id = "
                                 "$2::bigint",
                                 [=](const drogon::orm::Result &baseResult) {
                                     if (baseResult.empty()) {
@@ -1883,13 +1884,13 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
                                         return;
                                     }
 
-                                    std::string baseText = ensurePlainText(
-                                            baseResult[0]["content_text"].isNull()
-                                                    ? ""
-                                                    : baseResult[0]["content_text"].as<std::string>(),
-                                            baseResult[0]["content_html"].isNull()
-                                                    ? ""
-                                                    : baseResult[0]["content_html"].as<std::string>());
+                                    std::string baseText =
+                                            ensurePlainText(baseResult[0]["content_text"].isNull()
+                                                                    ? ""
+                                                                    : baseResult[0]["content_text"].as<std::string>(),
+                                                            baseResult[0]["content_html"].isNull()
+                                                                    ? ""
+                                                                    : baseResult[0]["content_html"].as<std::string>());
 
                                     // 7. 计算差异
                                     auto segments = DiffUtils::computeLineDiff(baseText, targetText);
@@ -2138,6 +2139,9 @@ void DocumentController::importMarkdown(const HttpRequestPtr &req,
                                         "NOW() "
                                         "WHERE id = $2::bigint",
                                         [=](const drogon::orm::Result &) {
+                                            // 将导入的文档索引到 Meilisearch
+                                            SearchService::indexDocument(docId, title,
+                                                                         markdown.empty() ? title : markdown);
                                             Json::Value responseJson;
                                             responseJson["id"] = docId;
                                             responseJson["title"] = title;
