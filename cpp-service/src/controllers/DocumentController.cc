@@ -8,37 +8,34 @@
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
-#include <iomanip>
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <regex>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
-#include <regex>
 
 #include "../repositories/VersionRepository.h"
 #include "../services/SearchService.h"
-#include "../utils/DbUtils.h"
 #include "../utils/DiffUtils.h"
-#include "../utils/MinIOClient.h"
 #include "../utils/NotificationUtils.h"
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
 
-static void queryDocumentWithTags(const drogon::orm::DbClientPtr &db, int docId,
-                                  std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr);
-static void queryAclAndRespond(const drogon::orm::DbClientPtr &db, int docId, int ownerId,
-                               std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr);
+static void queryDocumentWithTags(const drogon::orm::DbClientPtr& db, int docId,
+                                  std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr);
+static void queryAclAndRespond(const drogon::orm::DbClientPtr& db, int docId, int ownerId,
+                               std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr);
 // 前向声明导出辅助函数
-static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr,
-                                  const std::string &title, const std::string &content);
-static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr,
-                                 const std::string &title, const std::string &content);
-static void proceedWithMarkdownExport(std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr,
-                                      const std::string &title, const std::string &content);
+static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr,
+                                  const std::string& title, const std::string& content);
+static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr,
+                                 const std::string& title, const std::string& content);
+static void proceedWithMarkdownExport(std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr,
+                                      const std::string& title, const std::string& content);
 
-static std::string htmlToPlainText(const std::string &html) {
+static std::string htmlToPlainText(const std::string& html) {
     if (html.empty()) {
         return "";
     }
@@ -50,7 +47,7 @@ static std::string htmlToPlainText(const std::string &html) {
     text = std::regex_replace(text, std::regex("<\\s*br\\s*/?>", std::regex_constants::icase), "\n");
     text = std::regex_replace(text, std::regex("<[^>]+>"), " ");
 
-    auto replaceAll = [](std::string &target, const std::string &from, const std::string &to) {
+    auto replaceAll = [](std::string& target, const std::string& from, const std::string& to) {
         size_t pos = 0;
         while ((pos = target.find(from, pos)) != std::string::npos) {
             target.replace(pos, from.length(), to);
@@ -71,7 +68,7 @@ static std::string htmlToPlainText(const std::string &html) {
     return text;
 }
 
-static std::string ensurePlainText(const std::string &contentText, const std::string &contentHtml) {
+static std::string ensurePlainText(const std::string& contentText, const std::string& contentHtml) {
     if (!contentText.empty()) {
         return contentText;
     }
@@ -81,8 +78,8 @@ static std::string ensurePlainText(const std::string &contentText, const std::st
     return htmlToPlainText(contentHtml);
 }
 // 辅助函数：构建文档响应
-static void buildDocumentResponse(const drogon::orm::Result &r,
-                                  std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr) {
+static void buildDocumentResponse(const drogon::orm::Result& r,
+                                  std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr) {
     Json::Value responseJson;
     responseJson["id"] = r[0]["id"].as<int>();
     responseJson["title"] = r[0]["title"].as<std::string>();
@@ -124,9 +121,9 @@ static void buildDocumentResponse(const drogon::orm::Result &r,
 }
 
 // 辅助函数:处理标签更新
-static void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, const Json::Value &json,
-                             const drogon::orm::Result &docResult,
-                             std::shared_ptr<std::function<void(const drogon::HttpResponsePtr &)>> callbackPtr) {
+static void handleUpdateTags(const drogon::orm::DbClientPtr& db, int docId, const Json::Value& json,
+                             const drogon::orm::Result& docResult,
+                             std::shared_ptr<std::function<void(const drogon::HttpResponsePtr&)>> callbackPtr) {
     // 没有标签更新,直接查询文档（包括标签）并返回
     if (!json.isMember("tags")) {
         queryDocumentWithTags(db, docId, callbackPtr);
@@ -138,7 +135,7 @@ static void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, cons
     // 删除旧标签关联
     db->execSqlAsync(
             "DELETE FROM doc_tag WHERE doc_id = $1::integer",
-            [=](const drogon::orm::Result &r) {
+            [=](const drogon::orm::Result& r) {
                 Json::Value tagsJson = json["tags"];
                 if (!tagsJson.isArray() || tagsJson.size() == 0) {
                     // 没有新标签,查询文档（包括标签）并返回
@@ -152,7 +149,7 @@ static void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, cons
                     drogon::orm::DbClientPtr db;
                     int docId;
                     Json::Value tagsJson;
-                    std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr;
+                    std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr;
                     int index = 0;
                 };
 
@@ -173,7 +170,7 @@ static void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, cons
                     state->db->execSqlAsync(
                             "INSERT INTO tag (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name = $1 "
                             "RETURNING id, name",
-                            [=](const drogon::orm::Result &tagResult) mutable {
+                            [=](const drogon::orm::Result& tagResult) mutable {
                                 if (!tagResult.empty()) {
                                     int tagId = tagResult[0]["id"].as<int>();
 
@@ -181,8 +178,8 @@ static void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, cons
                                     state->db->execSqlAsync(
                                             "INSERT INTO doc_tag (doc_id, tag_id) VALUES ($1::integer, "
                                             "$2::integer) ON CONFLICT DO NOTHING",
-                                            [=](const drogon::orm::Result &r) mutable { (*processNext)(); },
-                                            [=](const drogon::orm::DrogonDbException &e) {
+                                            [=](const drogon::orm::Result& r) mutable { (*processNext)(); },
+                                            [=](const drogon::orm::DrogonDbException& e) {
                                                 ResponseUtils::sendError(
                                                         *(state->callbackPtr),
                                                         "Database error: " + std::string(e.base().what()),
@@ -194,7 +191,7 @@ static void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, cons
                                     (*processNext)();
                                 }
                             },
-                            [=](const drogon::orm::DrogonDbException &e) {
+                            [=](const drogon::orm::DrogonDbException& e) {
                                 ResponseUtils::sendError(*(state->callbackPtr),
                                                          "Database error: " + std::string(e.base().what()),
                                                          k500InternalServerError);
@@ -206,7 +203,7 @@ static void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, cons
                 // 开始处理
                 (*processNext)();
             },
-            [=](const drogon::orm::DrogonDbException &e) {
+            [=](const drogon::orm::DrogonDbException& e) {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                          k500InternalServerError);
                 return;
@@ -215,8 +212,8 @@ static void handleUpdateTags(const drogon::orm::DbClientPtr &db, int docId, cons
 }
 
 // 辅助函数：查询文档（包括标签）并返回响应
-static void queryDocumentWithTags(const drogon::orm::DbClientPtr &db, int docId,
-                                  std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr) {
+static void queryDocumentWithTags(const drogon::orm::DbClientPtr& db, int docId,
+                                  std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr) {
     std::string docIdStr = std::to_string(docId);
     db->execSqlAsync(
             "SELECT d.id, d.title, d.owner_id, d.is_locked, d.status, d.last_published_version_id, "
@@ -228,14 +225,14 @@ static void queryDocumentWithTags(const drogon::orm::DbClientPtr &db, int docId,
             "LEFT JOIN tag t ON dt.tag_id = t.id "
             "WHERE d.id = $1::integer "
             "GROUP BY d.id",
-            [=](const drogon::orm::Result &r) {
+            [=](const drogon::orm::Result& r) {
                 if (r.empty()) {
                     ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
                     return;
                 }
                 buildDocumentResponse(r, callbackPtr);
             },
-            [=](const drogon::orm::DrogonDbException &e) {
+            [=](const drogon::orm::DrogonDbException& e) {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                          k500InternalServerError);
             },
@@ -243,8 +240,8 @@ static void queryDocumentWithTags(const drogon::orm::DbClientPtr &db, int docId,
 }
 
 // 辅助函数：查询 ACL 列表并返回统一响应
-static void queryAclAndRespond(const drogon::orm::DbClientPtr &db, int docId, int ownerId,
-                               std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr) {
+static void queryAclAndRespond(const drogon::orm::DbClientPtr& db, int docId, int ownerId,
+                               std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr) {
     if (!db) {
         ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
         return;
@@ -259,11 +256,11 @@ static void queryAclAndRespond(const drogon::orm::DbClientPtr &db, int docId, in
             "LEFT JOIN user_profile up ON u.id = up.user_id "
             "WHERE da.doc_id = $1::bigint "
             "ORDER BY da.user_id",
-            [=](const drogon::orm::Result &aclResult) {
+            [=](const drogon::orm::Result& aclResult) {
                 Json::Value aclArray(Json::arrayValue);
                 bool ownerIncluded = false;
 
-                for (const auto &row : aclResult) {
+                for (const auto& row : aclResult) {
                     Json::Value aclItem;
                     int aclUserId = row["user_id"].as<int>();
                     aclItem["user_id"] = aclUserId;
@@ -278,7 +275,7 @@ static void queryAclAndRespond(const drogon::orm::DbClientPtr &db, int docId, in
                     aclArray.append(aclItem);
                 }
 
-                auto sendSuccessResponse = [callbackPtr, docId](const Json::Value &finalAcl) {
+                auto sendSuccessResponse = [callbackPtr, docId](const Json::Value& finalAcl) {
                     Json::Value responseJson;
                     responseJson["doc_id"] = docId;
                     responseJson["acl"] = finalAcl;
@@ -295,7 +292,7 @@ static void queryAclAndRespond(const drogon::orm::DbClientPtr &db, int docId, in
                         "SELECT u.email, up.nickname FROM \"user\" u "
                         "LEFT JOIN user_profile up ON u.id = up.user_id "
                         "WHERE u.id = $1::bigint",
-                        [=](const drogon::orm::Result &ownerResult) mutable {
+                        [=](const drogon::orm::Result& ownerResult) mutable {
                             Json::Value ownerItem;
                             ownerItem["user_id"] = ownerId;
                             ownerItem["permission"] = "owner";
@@ -308,20 +305,20 @@ static void queryAclAndRespond(const drogon::orm::DbClientPtr &db, int docId, in
                             aclArray.append(ownerItem);
                             sendSuccessResponse(aclArray);
                         },
-                        [=](const drogon::orm::DrogonDbException &e) {
+                        [=](const drogon::orm::DrogonDbException& e) {
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
                         ownerIdStr);
             },
-            [=](const drogon::orm::DrogonDbException &e) {
+            [=](const drogon::orm::DrogonDbException& e) {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                          k500InternalServerError);
             },
             docIdStr);
 }
 
-void DocumentController::create(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::create(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.获取 user_id
     std::string userIdStr = req->getParameter("user_id");
     if (userIdStr.empty()) {
@@ -363,13 +360,13 @@ void DocumentController::create(const HttpRequestPtr &req, std::function<void(co
     }
 
     // 使用 shared_ptr 包装 callback 以支持嵌套异步调用
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
 
     // 5.插入文档
     db->execSqlAsync(
             "INSERT INTO document (owner_id, title, status) VALUES ($1::integer, $2, 'draft') "
             "RETURNING id, owner_id, title, is_locked, status, created_at, updated_at",
-            [=](const drogon::orm::Result &r) mutable {
+            [=](const drogon::orm::Result& r) mutable {
                 if (r.empty()) {
                     ResponseUtils::sendError(*callbackPtr, "Failed to create document", k500InternalServerError);
                     return;
@@ -382,7 +379,7 @@ void DocumentController::create(const HttpRequestPtr &req, std::function<void(co
                 db->execSqlAsync(
                         "INSERT INTO doc_acl (doc_id, user_id, permission) "
                         "VALUES($1::integer, $2::integer, 'owner') ON CONFLICT DO NOTHING",
-                        [=](const drogon::orm::Result &) mutable {
+                        [=](const drogon::orm::Result&) mutable {
                             // 7.索引文档到Meilisearch
                             std::string docTitle = r[0]["title"].as<std::string>();
                             SearchService::indexDocument(docId, docTitle, docTitle);  // 新文档先用title作为content
@@ -403,20 +400,20 @@ void DocumentController::create(const HttpRequestPtr &req, std::function<void(co
                             responseJson["updated_at"] = r[0]["updated_at"].as<std::string>();
                             ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
                         },
-                        [=](const drogon::orm::DrogonDbException &e) mutable {
+                        [=](const drogon::orm::DrogonDbException& e) mutable {
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
                         docIdStr, userIdStr);
             },
-            [=](const drogon::orm::DrogonDbException &e) mutable {
+            [=](const drogon::orm::DrogonDbException& e) mutable {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                          k500InternalServerError);
             },
             userIdStr, title);
 }
 
-void DocumentController::list(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::list(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.获取user_id
     std::string userIdStr = req->getParameter("user_id");
     if (userIdStr.empty()) {
@@ -425,7 +422,7 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
     }
     // 2.解析查询参数
     // 通用的整数参数解析，保证边界合法
-    auto parseIntParam = [&](const std::string &name, int minValue, int maxValue, int defaultValue) {
+    auto parseIntParam = [&](const std::string& name, int minValue, int maxValue, int defaultValue) {
         std::string value = req->getParameter(name);
         if (value.empty()) return defaultValue;
         try {
@@ -473,7 +470,7 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
         ResponseUtils::sendError(callback, "Database not available", k500InternalServerError);
         return;
     }
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
 
     // 构建WHERE子句
     std::string baseWhere = "WHERE (d.owner_id = $1::integer OR a.user_id = $1::integer)";
@@ -501,10 +498,10 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
             "::integer";
 
     // 执行查询的回调函数
-    auto processListResult = [=](const drogon::orm::Result &listResult, int total) {
+    auto processListResult = [=](const drogon::orm::Result& listResult, int total) {
         Json::Value responseJson;
         Json::Value docsArray(Json::arrayValue);
-        for (const auto &row : listResult) {
+        for (const auto& row : listResult) {
             Json::Value docJson;
             docJson["id"] = row["id"].as<int>();
             docJson["title"] = row["title"].as<std::string>();
@@ -530,7 +527,7 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
         ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
     };
 
-    auto errorCallback = [=](const drogon::orm::DrogonDbException &e) {
+    auto errorCallback = [=](const drogon::orm::DrogonDbException& e) {
         ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                  k500InternalServerError);
     };
@@ -539,11 +536,11 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
     if (hasStatusFilter) {
         db->execSqlAsync(
                 countSql,
-                [=](const drogon::orm::Result &countResult) mutable {
+                [=](const drogon::orm::Result& countResult) mutable {
                     int total = countResult.empty() ? 0 : countResult[0]["total"].as<int>();
                     db->execSqlAsync(
                             listSql,
-                            [=](const drogon::orm::Result &listResult) mutable {
+                            [=](const drogon::orm::Result& listResult) mutable {
                                 processListResult(listResult, total);
                             },
                             errorCallback, userIdStr, statusFilter, std::to_string(pageSize), std::to_string(offset));
@@ -552,11 +549,11 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
     } else {
         db->execSqlAsync(
                 countSql,
-                [=](const drogon::orm::Result &countResult) mutable {
+                [=](const drogon::orm::Result& countResult) mutable {
                     int total = countResult.empty() ? 0 : countResult[0]["total"].as<int>();
                     db->execSqlAsync(
                             listSql,
-                            [=](const drogon::orm::Result &listResult) mutable {
+                            [=](const drogon::orm::Result& listResult) mutable {
                                 processListResult(listResult, total);
                             },
                             errorCallback, userIdStr, std::to_string(pageSize), std::to_string(offset));
@@ -565,7 +562,7 @@ void DocumentController::list(const HttpRequestPtr &req, std::function<void(cons
     }
 }
 
-void DocumentController::get(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::get(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.获取doc_id (路径参数)  /api/docs/{id}
     // 路径参数通过 getRoutingParameters() 获取，返回 vector
     auto routingParams = req->getRoutingParameters();
@@ -604,7 +601,7 @@ void DocumentController::get(const HttpRequestPtr &req, std::function<void(const
         return;
     }
 
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
 
     db->execSqlAsync(
             "SELECT d.id, d.title, d.owner_id, d.is_locked, d.status, d.last_published_version_id, "
@@ -616,7 +613,7 @@ void DocumentController::get(const HttpRequestPtr &req, std::function<void(const
             "LEFT JOIN tag t ON dt.tag_id = t.id "
             "WHERE d.id = $1::integer "
             "GROUP BY d.id",
-            [=](const drogon::orm::Result &r) {
+            [=](const drogon::orm::Result& r) {
                 if (r.empty()) {
                     ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
                     return;
@@ -628,14 +625,14 @@ void DocumentController::get(const HttpRequestPtr &req, std::function<void(const
                     // 检查 ACL
                     db->execSqlAsync(
                             "SELECT 1 FROM doc_acl WHERE doc_id = $1::integer AND user_id = $2::integer",
-                            [=](const drogon::orm::Result &aclResult) {
+                            [=](const drogon::orm::Result& aclResult) {
                                 if (aclResult.empty()) {
                                     ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
                                     return;
                                 }
                                 buildDocumentResponse(r, callbackPtr);
                             },
-                            [=](const drogon::orm::DrogonDbException &e) {
+                            [=](const drogon::orm::DrogonDbException& e) {
                                 ResponseUtils::sendError(*callbackPtr,
                                                          "Database error: " + std::string(e.base().what()),
                                                          k500InternalServerError);
@@ -645,15 +642,15 @@ void DocumentController::get(const HttpRequestPtr &req, std::function<void(const
                     buildDocumentResponse(r, callbackPtr);
                 }
             },
-            [=](const drogon::orm::DrogonDbException &e) {
+            [=](const drogon::orm::DrogonDbException& e) {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                          k500InternalServerError);
             },
             docIdStr);
 }
 
-void DocumentController::update(const drogon::HttpRequestPtr &req,
-                                std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::update(const drogon::HttpRequestPtr& req,
+                                std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.获取doc_id (路径参数)  /api/docs/{id}
     // 路径参数通过 getRoutingParameters() 获取，返回 vector
     auto routingParams = req->getRoutingParameters();
@@ -689,7 +686,7 @@ void DocumentController::update(const drogon::HttpRequestPtr &req,
     }
 
     // 3.检查权限(必须是 owner 或 editor)
-    auto callbackPtr = std::make_shared<std::function<void(const drogon::HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const drogon::HttpResponsePtr&)>>(std::move(callback));
 
     PermissionUtils::hasPermission(docId, userId, "editor", [=](bool hasPermission) {
         if (!hasPermission) {
@@ -753,14 +750,14 @@ void DocumentController::update(const drogon::HttpRequestPtr &req,
             // 先查询文档是否存在
             db->execSqlAsync(
                     "SELECT * FROM document WHERE id = $1::integer",
-                    [=](const drogon::orm::Result &r) {
+                    [=](const drogon::orm::Result& r) {
                         if (r.empty()) {
                             ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
                             return;
                         }
                         handleUpdateTags(db, docId, json, r, callbackPtr);
                     },
-                    [=](const drogon::orm::DrogonDbException &e) {
+                    [=](const drogon::orm::DrogonDbException& e) {
                         ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                  k500InternalServerError);
                     },
@@ -774,7 +771,7 @@ void DocumentController::update(const drogon::HttpRequestPtr &req,
         std::string isLockedStr = isLocked ? "true" : "false";
 
         // 定义统一的成功和错误回调
-        auto successCallback = [=](const drogon::orm::Result &r) {
+        auto successCallback = [=](const drogon::orm::Result& r) {
             if (r.empty()) {
                 ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
                 return;
@@ -787,7 +784,7 @@ void DocumentController::update(const drogon::HttpRequestPtr &req,
             handleUpdateTags(db, docId, json, r, callbackPtr);
         };
 
-        auto errorCallback = [=](const drogon::orm::DrogonDbException &e) {
+        auto errorCallback = [=](const drogon::orm::DrogonDbException& e) {
             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                      k500InternalServerError);
         };
@@ -818,7 +815,7 @@ void DocumentController::update(const drogon::HttpRequestPtr &req,
 
         sql = "UPDATE document SET " +
               std::accumulate(updateParts.begin(), updateParts.end(), std::string(),
-                              [](const std::string &a, const std::string &b) { return a.empty() ? b : a + ", " + b; }) +
+                              [](const std::string& a, const std::string& b) { return a.empty() ? b : a + ", " + b; }) +
               ", updated_at = NOW() WHERE id = $" + std::to_string(paramIndex) + "::integer RETURNING *";
         params.push_back(docIdStr);
 
@@ -835,7 +832,7 @@ void DocumentController::update(const drogon::HttpRequestPtr &req,
     });
 }
 
-void DocumentController::deleteDoc(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::deleteDoc(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.获取路径参数 {id}
     std::vector<std::string> routingParams = req->getRoutingParameters();
     if (routingParams.empty()) {
@@ -870,7 +867,7 @@ void DocumentController::deleteDoc(const HttpRequestPtr &req, std::function<void
     }
 
     // 3.检查权限(必须是owner)
-    auto callbackPtr = std::make_shared<std::function<void(const drogon::HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const drogon::HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "owner", [=](bool hasPermission) {
         if (!hasPermission) {
             ResponseUtils::sendError(*callbackPtr, "Forbidden: Only owner can delete document", k403Forbidden);
@@ -885,7 +882,7 @@ void DocumentController::deleteDoc(const HttpRequestPtr &req, std::function<void
         }
         db->execSqlAsync(
                 "DELETE FROM document WHERE id = $1::integer AND owner_id = $2::integer",
-                [=](const drogon::orm::Result &r) {
+                [=](const drogon::orm::Result& r) {
                     // 检查是否真的删除了文档
                     if (r.affectedRows() == 0) {
                         ResponseUtils::sendError(*callbackPtr, "Document not found or you are not the owner",
@@ -900,7 +897,7 @@ void DocumentController::deleteDoc(const HttpRequestPtr &req, std::function<void
                     responseJson["id"] = docId;
                     ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                 },
-                [=](const drogon::orm::DrogonDbException &e) {
+                [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
                 },
@@ -908,7 +905,7 @@ void DocumentController::deleteDoc(const HttpRequestPtr &req, std::function<void
     });
 }
 
-void DocumentController::getAcl(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::getAcl(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.获取路径参数 doc_id
     auto routingParams = req->getRoutingParameters();
     if (routingParams.empty()) {
@@ -942,7 +939,7 @@ void DocumentController::getAcl(const HttpRequestPtr &req, std::function<void(co
         ResponseUtils::sendError(callback, "Database not available", k500InternalServerError);
         return;
     }
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
 
     // 3.验证用户是文档owner
     PermissionUtils::hasPermission(docId, userId, "owner", [=](bool hasPermission) {
@@ -954,7 +951,7 @@ void DocumentController::getAcl(const HttpRequestPtr &req, std::function<void(co
     });
 }
 
-void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::updateAcl(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1.获取 doc_id
     auto routingParams = req->getRoutingParameters();
     if (routingParams.empty()) {
@@ -1002,7 +999,7 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
         return;
     }
 
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
 
     // 4.验证当前用户是 owner
     PermissionUtils::hasPermission(docId, userId, "owner", [=](bool hasPermission) {
@@ -1016,7 +1013,7 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
         aclItems.reserve(aclArray.size());
         std::unordered_map<int, std::string> newAclMap;
 
-        for (const auto &item : aclArray) {
+        for (const auto& item : aclArray) {
             if (!item.isMember("user_id") || !item.isMember("permission")) {
                 ResponseUtils::sendError(*callbackPtr, "Invalid ACL item: user_id and permission are required",
                                          k400BadRequest);
@@ -1043,7 +1040,7 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
             newAclMap[aclUserId] = permission;
         }
 
-        auto errorHandler = [=](const drogon::orm::DrogonDbException &e) {
+        auto errorHandler = [=](const drogon::orm::DrogonDbException& e) {
             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                      k500InternalServerError);
         };
@@ -1053,8 +1050,8 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
         auto previousAclMapPtr = std::make_shared<std::unordered_map<int, std::string>>();
         auto newAclMapPtr = std::make_shared<std::unordered_map<int, std::string>>(std::move(newAclMap));
 
-        auto notifyPermissionChanges = [=](const std::unordered_map<int, std::string> &previousAcl) {
-            for (const auto &entry : *newAclMapPtr) {
+        auto notifyPermissionChanges = [=](const std::unordered_map<int, std::string>& previousAcl) {
+            for (const auto& entry : *newAclMapPtr) {
                 auto it = previousAcl.find(entry.first);
                 if (it == previousAcl.end() || it->second != entry.second) {
                     NotificationUtils::createPermissionChangeNotification(docId, entry.first, entry.second);
@@ -1062,16 +1059,16 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
             }
         };
 
-        auto applyAclChanges = [=](const std::shared_ptr<std::unordered_map<int, std::string>> &previousAcl) {
+        auto applyAclChanges = [=](const std::shared_ptr<std::unordered_map<int, std::string>>& previousAcl) {
             db->execSqlAsync(
                     "DELETE FROM doc_acl WHERE doc_id = $1::bigint AND permission != 'owner'",
-                    [=](const drogon::orm::Result &) {
+                    [=](const drogon::orm::Result&) {
                         if (aclItems.empty()) {
                             fetchAcl();
                             return;
                         }
 
-                        auto buildIntArray = [](const std::vector<std::pair<int, std::string>> &items) {
+                        auto buildIntArray = [](const std::vector<std::pair<int, std::string>>& items) {
                             std::ostringstream oss;
                             oss << "{";
                             for (size_t i = 0; i < items.size(); ++i) {
@@ -1084,7 +1081,7 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
                             return oss.str();
                         };
 
-                        auto buildTextArray = [](const std::vector<std::pair<int, std::string>> &items) {
+                        auto buildTextArray = [](const std::vector<std::pair<int, std::string>>& items) {
                             std::ostringstream oss;
                             oss << "{";
                             for (size_t i = 0; i < items.size(); ++i) {
@@ -1103,7 +1100,7 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
                         db->execSqlAsync(
                                 "INSERT INTO doc_acl (doc_id, user_id, permission) "
                                 "SELECT $1::bigint, unnest($2::bigint[]), unnest($3::varchar[])",
-                                [=](const drogon::orm::Result &) {
+                                [=](const drogon::orm::Result&) {
                                     notifyPermissionChanges(*previousAcl);
                                     fetchAcl();
                                 },
@@ -1114,19 +1111,19 @@ void DocumentController::updateAcl(const HttpRequestPtr &req, std::function<void
 
         db->execSqlAsync(
                 "SELECT user_id, permission FROM doc_acl WHERE doc_id = $1::bigint AND permission != 'owner'",
-                [=](const drogon::orm::Result &currentAcl) {
-                    for (const auto &row : currentAcl) {
+                [=](const drogon::orm::Result& currentAcl) {
+                    for (const auto& row : currentAcl) {
                         (*previousAclMapPtr)[row["user_id"].as<int>()] = row["permission"].as<std::string>();
                     }
                     applyAclChanges(previousAclMapPtr);
                 },
-                [=](const drogon::orm::DrogonDbException &e) { errorHandler(e); }, docIdStr);
+                [=](const drogon::orm::DrogonDbException& e) { errorHandler(e); }, docIdStr);
     });
 }
 
 // 获取文档版本列表
-void DocumentController::getVersions(const HttpRequestPtr &req,
-                                     std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::getVersions(const HttpRequestPtr& req,
+                                     std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1. 获取路径参数 doc_id
     auto routingParams = req->getRoutingParameters();
     if (routingParams.empty()) {
@@ -1156,7 +1153,7 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
     }
 
     // 3. 检查权限（至少需要 viewer 权限）
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
         if (!hasPermission) {
             ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
@@ -1196,11 +1193,11 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
         std::string docIdStr = std::to_string(docId);
 
         // 提取公共的响应处理逻辑
-        auto buildVersionResponse = [=](const drogon::orm::Result &r) {
+        auto buildVersionResponse = [=](const drogon::orm::Result& r) {
             Json::Value responseJson;
             Json::Value versionsArray(Json::arrayValue);
 
-            for (const auto &row : r) {
+            for (const auto& row : r) {
                 Json::Value versionJson;
                 versionJson["id"] = row["id"].as<int>();
                 versionJson["doc_id"] = row["doc_id"].as<int>();
@@ -1231,7 +1228,7 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
             ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
         };
 
-        auto handleError = [=](const drogon::orm::DrogonDbException &e) {
+        auto handleError = [=](const drogon::orm::DrogonDbException& e) {
             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                      k500InternalServerError);
         };
@@ -1256,11 +1253,11 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
                 sql += " ORDER BY dv.version_number DESC";
                 db->execSqlAsync(
                         sql,
-                        [=](const drogon::orm::Result &r) {
+                        [=](const drogon::orm::Result& r) {
                             Json::Value responseJson;
                             Json::Value versionsArray(Json::arrayValue);
 
-                            for (const auto &row : r) {
+                            for (const auto& row : r) {
                                 Json::Value versionJson;
                                 versionJson["id"] = row["id"].as<int>();
                                 versionJson["doc_id"] = row["doc_id"].as<int>();
@@ -1290,7 +1287,7 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
                             responseJson["versions"] = versionsArray;
                             ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                         },
-                        [=](const drogon::orm::DrogonDbException &e) {
+                        [=](const drogon::orm::DrogonDbException& e) {
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
@@ -1299,11 +1296,11 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
                 sql += " ORDER BY dv.version_number DESC";
                 db->execSqlAsync(
                         sql,
-                        [=](const drogon::orm::Result &r) {
+                        [=](const drogon::orm::Result& r) {
                             Json::Value responseJson;
                             Json::Value versionsArray(Json::arrayValue);
 
-                            for (const auto &row : r) {
+                            for (const auto& row : r) {
                                 Json::Value versionJson;
                                 versionJson["id"] = row["id"].as<int>();
                                 versionJson["doc_id"] = row["doc_id"].as<int>();
@@ -1333,7 +1330,7 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
                             responseJson["versions"] = versionsArray;
                             ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                         },
-                        [=](const drogon::orm::DrogonDbException &e) {
+                        [=](const drogon::orm::DrogonDbException& e) {
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
@@ -1346,11 +1343,11 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
                 sql += " ORDER BY dv.version_number DESC";
                 db->execSqlAsync(
                         sql,
-                        [=](const drogon::orm::Result &r) {
+                        [=](const drogon::orm::Result& r) {
                             Json::Value responseJson;
                             Json::Value versionsArray(Json::arrayValue);
 
-                            for (const auto &row : r) {
+                            for (const auto& row : r) {
                                 Json::Value versionJson;
                                 versionJson["id"] = row["id"].as<int>();
                                 versionJson["doc_id"] = row["doc_id"].as<int>();
@@ -1380,7 +1377,7 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
                             responseJson["versions"] = versionsArray;
                             ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                         },
-                        [=](const drogon::orm::DrogonDbException &e) {
+                        [=](const drogon::orm::DrogonDbException& e) {
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
@@ -1389,11 +1386,11 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
                 sql += " ORDER BY dv.version_number DESC";
                 db->execSqlAsync(
                         sql,
-                        [=](const drogon::orm::Result &r) {
+                        [=](const drogon::orm::Result& r) {
                             Json::Value responseJson;
                             Json::Value versionsArray(Json::arrayValue);
 
-                            for (const auto &row : r) {
+                            for (const auto& row : r) {
                                 Json::Value versionJson;
                                 versionJson["id"] = row["id"].as<int>();
                                 versionJson["doc_id"] = row["doc_id"].as<int>();
@@ -1423,7 +1420,7 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
                             responseJson["versions"] = versionsArray;
                             ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                         },
-                        [=](const drogon::orm::DrogonDbException &e) {
+                        [=](const drogon::orm::DrogonDbException& e) {
                             ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                      k500InternalServerError);
                         },
@@ -1436,11 +1433,11 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
             sql += " ORDER BY dv.version_number DESC";
 
             // 提取公共的响应处理逻辑
-            auto handleResult = [=](const drogon::orm::Result &r) {
+            auto handleResult = [=](const drogon::orm::Result& r) {
                 Json::Value responseJson;
                 Json::Value versionsArray(Json::arrayValue);
 
-                for (const auto &row : r) {
+                for (const auto& row : r) {
                     Json::Value versionJson;
                     versionJson["id"] = row["id"].as<int>();
                     versionJson["doc_id"] = row["doc_id"].as<int>();
@@ -1471,7 +1468,7 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
                 ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
             };
 
-            auto handleError = [=](const drogon::orm::DrogonDbException &e) {
+            auto handleError = [=](const drogon::orm::DrogonDbException& e) {
                 ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                          k500InternalServerError);
             };
@@ -1486,8 +1483,7 @@ void DocumentController::getVersions(const HttpRequestPtr &req,
 }
 
 // 获取单个版本详情
-void DocumentController::getVersion(const HttpRequestPtr &req,
-                                    std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::getVersion(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1. 获取路径参数
     auto routingParams = req->getRoutingParameters();
     if (routingParams.size() < 2) {
@@ -1518,7 +1514,7 @@ void DocumentController::getVersion(const HttpRequestPtr &req,
     }
 
     // 3. 检查权限
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
         if (!hasPermission) {
             ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
@@ -1541,13 +1537,13 @@ void DocumentController::getVersion(const HttpRequestPtr &req,
                 "INNER JOIN \"user\" u ON dv.created_by = u.id "
                 "LEFT JOIN user_profile up ON u.id = up.user_id "
                 "WHERE dv.id = $1::bigint AND dv.doc_id = $2::bigint",
-                [=](const drogon::orm::Result &r) {
+                [=](const drogon::orm::Result& r) {
                     if (r.empty()) {
                         ResponseUtils::sendError(*callbackPtr, "Version not found", k404NotFound);
                         return;
                     }
 
-                    const auto &row = r[0];
+                    const auto& row = r[0];
                     Json::Value versionJson;
                     versionJson["id"] = row["id"].as<int>();
                     versionJson["doc_id"] = row["doc_id"].as<int>();
@@ -1574,7 +1570,7 @@ void DocumentController::getVersion(const HttpRequestPtr &req,
 
                     ResponseUtils::sendSuccess(*callbackPtr, versionJson, k200OK);
                 },
-                [=](const drogon::orm::DrogonDbException &e) {
+                [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
                 },
@@ -1583,8 +1579,8 @@ void DocumentController::getVersion(const HttpRequestPtr &req,
 }
 
 // 手动创建版本
-void DocumentController::createVersion(const HttpRequestPtr &req,
-                                       std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::createVersion(const HttpRequestPtr& req,
+                                       std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1. 获取路径参数 doc_id
     auto routingParams = req->getRoutingParameters();
     if (routingParams.empty()) {
@@ -1614,7 +1610,7 @@ void DocumentController::createVersion(const HttpRequestPtr &req,
     }
 
     // 3. 检查权限（需要 editor 权限）
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "editor", [=](bool hasPermission) {
         if (!hasPermission) {
             ResponseUtils::sendError(*callbackPtr, "Forbidden: Only editor or owner can create versions",
@@ -1671,15 +1667,15 @@ void DocumentController::createVersion(const HttpRequestPtr &req,
                     responseJson["message"] = "Version created successfully";
                     ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
                 },
-                [=](const std::string &message, drogon::HttpStatusCode code) {
+                [=](const std::string& message, drogon::HttpStatusCode code) {
                     ResponseUtils::sendError(*callbackPtr, message, code);
                 });
     });
 }
 
 // 恢复版本
-void DocumentController::restoreVersion(const HttpRequestPtr &req,
-                                        std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::restoreVersion(const HttpRequestPtr& req,
+                                        std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1. 获取路径参数
     auto routingParams = req->getRoutingParameters();
     if (routingParams.size() < 2) {
@@ -1710,7 +1706,7 @@ void DocumentController::restoreVersion(const HttpRequestPtr &req,
     }
 
     // 3. 检查权限（需要 owner 权限）
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "owner", [=](bool hasPermission) {
         if (!hasPermission) {
             ResponseUtils::sendError(*callbackPtr, "Forbidden: Only owner can restore versions", k403Forbidden);
@@ -1728,13 +1724,13 @@ void DocumentController::restoreVersion(const HttpRequestPtr &req,
                 "SELECT snapshot_url, snapshot_sha256, size_bytes, content_text, content_html "
                 "FROM document_version "
                 "WHERE id = $1::bigint AND doc_id = $2::bigint",
-                [=](const drogon::orm::Result &r) {
+                [=](const drogon::orm::Result& r) {
                     if (r.empty()) {
                         ResponseUtils::sendError(*callbackPtr, "Version not found", k404NotFound);
                         return;
                     }
 
-                    const auto &row = r[0];
+                    const auto& row = r[0];
                     std::string snapshotUrl = row["snapshot_url"].as<std::string>();
                     std::string sha256 = row["snapshot_sha256"].as<std::string>();
                     int64_t sizeBytes = row["size_bytes"].as<int64_t>();
@@ -1761,7 +1757,7 @@ void DocumentController::restoreVersion(const HttpRequestPtr &req,
                                         "UPDATE document SET last_published_version_id = $1::bigint, updated_at = "
                                         "NOW() "
                                         "WHERE id = $2::bigint",
-                                        [=](const drogon::orm::Result &) {
+                                        [=](const drogon::orm::Result&) {
                                             Json::Value responseJson;
                                             responseJson["version_id"] = newVersionId;
                                             responseJson["version_number"] = newVersionNumber;
@@ -1773,7 +1769,7 @@ void DocumentController::restoreVersion(const HttpRequestPtr &req,
                                                     "on next load.";
                                             ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
                                         },
-                                        [=](const drogon::orm::DrogonDbException &e) {
+                                        [=](const drogon::orm::DrogonDbException& e) {
                                             // 即使更新失败，版本已创建，返回成功但提示需要刷新
                                             Json::Value responseJson;
                                             responseJson["version_id"] = newVersionId;
@@ -1787,11 +1783,11 @@ void DocumentController::restoreVersion(const HttpRequestPtr &req,
                                         },
                                         std::to_string(newVersionId), std::to_string(docId));
                             },
-                            [=](const std::string &message, drogon::HttpStatusCode code) {
+                            [=](const std::string& message, drogon::HttpStatusCode code) {
                                 ResponseUtils::sendError(*callbackPtr, message, code);
                             });
                 },
-                [=](const drogon::orm::DrogonDbException &e) {
+                [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
                 },
@@ -1800,8 +1796,8 @@ void DocumentController::restoreVersion(const HttpRequestPtr &req,
 }
 
 // 获取版本差异
-void DocumentController::getVersionDiff(const HttpRequestPtr &req,
-                                        std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::getVersionDiff(const HttpRequestPtr& req,
+                                        std::function<void(const HttpResponsePtr&)>&& callback) {
     // 1. 获取路径参数
     auto routingParams = req->getRoutingParameters();
     if (routingParams.size() < 2) {
@@ -1842,7 +1838,7 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
     }
 
     // 4. 检查权限
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
         if (!hasPermission) {
             ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
@@ -1858,38 +1854,39 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
 
         db->execSqlAsync(
                 "SELECT content_text, content_html FROM document_version WHERE id = $1::bigint AND doc_id = $2::bigint",
-                [=](const drogon::orm::Result &targetResult) {
+                [=](const drogon::orm::Result& targetResult) {
                     if (targetResult.empty()) {
                         ResponseUtils::sendError(*callbackPtr, "Version not found", k404NotFound);
                         return;
                     }
 
-                    std::string targetText = ensurePlainText(
-                            targetResult[0]["content_text"].isNull()
-                                    ? ""
-                                    : targetResult[0]["content_text"].as<std::string>(),
-                            targetResult[0]["content_html"].isNull()
-                                    ? ""
-                                    : targetResult[0]["content_html"].as<std::string>());
+                    std::string targetText =
+                            ensurePlainText(targetResult[0]["content_text"].isNull()
+                                                    ? ""
+                                                    : targetResult[0]["content_text"].as<std::string>(),
+                                            targetResult[0]["content_html"].isNull()
+                                                    ? ""
+                                                    : targetResult[0]["content_html"].as<std::string>());
 
                     // 6. 获取基础版本内容
                     if (baseVersionId > 0) {
                         db->execSqlAsync(
-                                "SELECT content_text, content_html FROM document_version WHERE id = $1::bigint AND doc_id = "
+                                "SELECT content_text, content_html FROM document_version WHERE id = $1::bigint AND "
+                                "doc_id = "
                                 "$2::bigint",
-                                [=](const drogon::orm::Result &baseResult) {
+                                [=](const drogon::orm::Result& baseResult) {
                                     if (baseResult.empty()) {
                                         ResponseUtils::sendError(*callbackPtr, "Base version not found", k404NotFound);
                                         return;
                                     }
 
-                                    std::string baseText = ensurePlainText(
-                                            baseResult[0]["content_text"].isNull()
-                                                    ? ""
-                                                    : baseResult[0]["content_text"].as<std::string>(),
-                                            baseResult[0]["content_html"].isNull()
-                                                    ? ""
-                                                    : baseResult[0]["content_html"].as<std::string>());
+                                    std::string baseText =
+                                            ensurePlainText(baseResult[0]["content_text"].isNull()
+                                                                    ? ""
+                                                                    : baseResult[0]["content_text"].as<std::string>(),
+                                                            baseResult[0]["content_html"].isNull()
+                                                                    ? ""
+                                                                    : baseResult[0]["content_html"].as<std::string>());
 
                                     // 7. 计算差异
                                     auto segments = DiffUtils::computeLineDiff(baseText, targetText);
@@ -1899,7 +1896,7 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
                                     responseJson["diff"] = DiffUtils::segmentsToJson(segments);
                                     ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                                 },
-                                [=](const drogon::orm::DrogonDbException &e) {
+                                [=](const drogon::orm::DrogonDbException& e) {
                                     ResponseUtils::sendError(*callbackPtr,
                                                              "Database error: " + std::string(e.base().what()),
                                                              k500InternalServerError);
@@ -1910,7 +1907,7 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
                         db->execSqlAsync(
                                 "SELECT content_text, content_html FROM document_version WHERE doc_id = $1::bigint "
                                 "ORDER BY version_number DESC LIMIT 1",
-                                [=](const drogon::orm::Result &currentResult) {
+                                [=](const drogon::orm::Result& currentResult) {
                                     std::string baseText = ensurePlainText(
                                             currentResult.empty() || currentResult[0]["content_text"].isNull()
                                                     ? ""
@@ -1927,7 +1924,7 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
                                     responseJson["diff"] = DiffUtils::segmentsToJson(segments);
                                     ResponseUtils::sendSuccess(*callbackPtr, responseJson, k200OK);
                                 },
-                                [=](const drogon::orm::DrogonDbException &e) {
+                                [=](const drogon::orm::DrogonDbException& e) {
                                     ResponseUtils::sendError(*callbackPtr,
                                                              "Database error: " + std::string(e.base().what()),
                                                              k500InternalServerError);
@@ -1935,7 +1932,7 @@ void DocumentController::getVersionDiff(const HttpRequestPtr &req,
                                 std::to_string(docId));
                     }
                 },
-                [=](const drogon::orm::DrogonDbException &e) {
+                [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
                 },
@@ -1965,8 +1962,8 @@ static std::string getConverterServiceUrl() {
 }
 
 // Markdown 文档导入（支持文件上传和 JSON 文本两种方式）
-void DocumentController::importMarkdown(const HttpRequestPtr &req,
-                                        std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::importMarkdown(const HttpRequestPtr& req,
+                                        std::function<void(const HttpResponsePtr&)>&& callback) {
     std::string userIdStr = req->getParameter("user_id");
     if (userIdStr.empty()) {
         ResponseUtils::sendError(callback, "Unauthorized", k401Unauthorized);
@@ -1983,8 +1980,8 @@ void DocumentController::importMarkdown(const HttpRequestPtr &req,
 
     if (isFileUpload) {
         // 文件上传方式
-        const auto &files = parser.getFiles();
-        const auto &file = files.front();
+        const auto& files = parser.getFiles();
+        const auto& file = files.front();
 
         // 验证文件类型
         std::string fileName = file.getFileName();
@@ -2002,7 +1999,7 @@ void DocumentController::importMarkdown(const HttpRequestPtr &req,
         }
 
         // 读取文件内容
-        const char *fileData = file.fileData();
+        const char* fileData = file.fileData();
         markdown = std::string(fileData, fileSize);
 
         // 从文件名提取标题（去掉扩展名）
@@ -2051,9 +2048,9 @@ void DocumentController::importMarkdown(const HttpRequestPtr &req,
     Json::StreamWriterBuilder builder;
     converterReq->setBody(Json::writeString(builder, converterPayload));
 
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
 
-    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr& resp) {
         if (result != drogon::ReqResult::Ok) {
             std::string errorMsg =
                     "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
@@ -2108,7 +2105,7 @@ void DocumentController::importMarkdown(const HttpRequestPtr &req,
         db->execSqlAsync(
                 "INSERT INTO document (title, owner_id, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) "
                 "RETURNING id",
-                [=](const drogon::orm::Result &r) {
+                [=](const drogon::orm::Result& r) {
                     if (r.empty()) {
                         ResponseUtils::sendError(*callbackPtr, "Failed to create document", k500InternalServerError);
                         return;
@@ -2124,7 +2121,7 @@ void DocumentController::importMarkdown(const HttpRequestPtr &req,
                             "INSERT INTO document_version (doc_id, version_number, snapshot_url, snapshot_sha256, "
                             "size_bytes, content_html, created_by, source, created_at) "
                             "VALUES ($1, 1, $2, $3, $4, $5, $6, 'import', NOW()) RETURNING id",
-                            [=](const drogon::orm::Result &r) {
+                            [=](const drogon::orm::Result& r) {
                                 if (r.empty()) {
                                     ResponseUtils::sendError(*callbackPtr, "Failed to create version",
                                                              k500InternalServerError);
@@ -2137,21 +2134,25 @@ void DocumentController::importMarkdown(const HttpRequestPtr &req,
                                         "UPDATE document SET last_published_version_id = $1::bigint, updated_at = "
                                         "NOW() "
                                         "WHERE id = $2::bigint",
-                                        [=](const drogon::orm::Result &) {
+                                        [=](const drogon::orm::Result&) {
+                                            // 将导入的文档索引到 Meilisearch
+                                            SearchService::indexDocument(docId, title,
+                                                                         markdown.empty() ? title : markdown);
+
                                             Json::Value responseJson;
                                             responseJson["id"] = docId;
                                             responseJson["title"] = title;
                                             responseJson["message"] = "Document imported successfully";
                                             ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
                                         },
-                                        [=](const drogon::orm::DrogonDbException &e) {
+                                        [=](const drogon::orm::DrogonDbException& e) {
                                             ResponseUtils::sendError(*callbackPtr,
                                                                      "Database error: " + std::string(e.base().what()),
                                                                      k500InternalServerError);
                                         },
                                         std::to_string(versionId), std::to_string(docId));
                             },
-                            [=](const drogon::orm::DrogonDbException &e) {
+                            [=](const drogon::orm::DrogonDbException& e) {
                                 ResponseUtils::sendError(*callbackPtr,
                                                          "Database error: " + std::string(e.base().what()),
                                                          k500InternalServerError);
@@ -2159,7 +2160,7 @@ void DocumentController::importMarkdown(const HttpRequestPtr &req,
                             std::to_string(docId), placeholderUrl, placeholderSha256, std::to_string(contentSize), html,
                             std::to_string(userId));
                 },
-                [=](const drogon::orm::DrogonDbException &e) {
+                [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
                 },
@@ -2168,8 +2169,7 @@ void DocumentController::importMarkdown(const HttpRequestPtr &req,
 }
 
 // Word 文档导出
-void DocumentController::exportWord(const HttpRequestPtr &req,
-                                    std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::exportWord(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     auto routingParams = req->getRoutingParameters();
     if (routingParams.empty()) {
         ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
@@ -2184,7 +2184,7 @@ void DocumentController::exportWord(const HttpRequestPtr &req,
     }
     int userId = std::stoi(userIdStr);
 
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
         if (!hasPermission) {
             ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
@@ -2202,7 +2202,7 @@ void DocumentController::exportWord(const HttpRequestPtr &req,
                 "FROM document d "
                 "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id "
                 "WHERE d.id = $1",
-                [=](const drogon::orm::Result &r) {
+                [=](const drogon::orm::Result& r) {
                     if (r.empty()) {
                         ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
                         return;
@@ -2222,7 +2222,7 @@ void DocumentController::exportWord(const HttpRequestPtr &req,
                                 "WHERE doc_id = $1 AND (content_html IS NOT NULL OR content_text IS NOT NULL) "
                                 "ORDER BY version_number DESC "
                                 "LIMIT 1",
-                                [=](const drogon::orm::Result &versionResult) {
+                                [=](const drogon::orm::Result& versionResult) {
                                     // 在 lambda 内部创建局部变量，避免引用外部变量导致的生命周期问题
                                     std::string extractedContent;
 
@@ -2249,7 +2249,7 @@ void DocumentController::exportWord(const HttpRequestPtr &req,
                                     // 继续导出流程，使用局部变量
                                     proceedWithWordExport(callbackPtr, title, extractedContent);
                                 },
-                                [=](const drogon::orm::DrogonDbException &e) {
+                                [=](const drogon::orm::DrogonDbException& e) {
                                     ResponseUtils::sendError(*callbackPtr,
                                                              "Database error: " + std::string(e.base().what()),
                                                              k500InternalServerError);
@@ -2261,7 +2261,7 @@ void DocumentController::exportWord(const HttpRequestPtr &req,
                     // 内容不为空，直接导出
                     proceedWithWordExport(callbackPtr, title, content);
                 },
-                [=](const drogon::orm::DrogonDbException &e) {
+                [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
                 },
@@ -2270,8 +2270,8 @@ void DocumentController::exportWord(const HttpRequestPtr &req,
 }
 
 // 辅助函数：执行 Word 导出
-static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr,
-                                  const std::string &title, const std::string &content) {
+static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr,
+                                  const std::string& title, const std::string& content) {
     std::string converterUrl = getConverterServiceUrl();
     auto client = drogon::HttpClient::newHttpClient(converterUrl);
     auto converterReq = drogon::HttpRequest::newHttpRequest();
@@ -2285,7 +2285,7 @@ static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpR
     Json::StreamWriterBuilder builder;
     converterReq->setBody(Json::writeString(builder, converterPayload));
 
-    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr& resp) {
         if (result != drogon::ReqResult::Ok) {
             std::string errorMsg =
                     "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
@@ -2343,7 +2343,7 @@ static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpR
 }
 
 // PDF 文档导出
-void DocumentController::exportPdf(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::exportPdf(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback) {
     auto routingParams = req->getRoutingParameters();
     if (routingParams.empty()) {
         ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
@@ -2358,7 +2358,7 @@ void DocumentController::exportPdf(const HttpRequestPtr &req, std::function<void
     }
     int userId = std::stoi(userIdStr);
 
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
         if (!hasPermission) {
             ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
@@ -2376,7 +2376,7 @@ void DocumentController::exportPdf(const HttpRequestPtr &req, std::function<void
                 "FROM document d "
                 "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id "
                 "WHERE d.id = $1",
-                [=](const drogon::orm::Result &r) {
+                [=](const drogon::orm::Result& r) {
                     if (r.empty()) {
                         ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
                         return;
@@ -2420,7 +2420,7 @@ void DocumentController::exportPdf(const HttpRequestPtr &req, std::function<void
                                 "(snapshot_url IS NOT NULL AND snapshot_url NOT LIKE 'import://%')) "
                                 "ORDER BY version_number DESC "
                                 "LIMIT 1",
-                                [=](const drogon::orm::Result &versionResult) {
+                                [=](const drogon::orm::Result& versionResult) {
                                     // 在 lambda 内部创建局部变量，避免引用外部变量导致的生命周期问题
                                     std::string extractedContent;
 
@@ -2485,7 +2485,7 @@ void DocumentController::exportPdf(const HttpRequestPtr &req, std::function<void
                                     // 继续导出流程，使用局部变量
                                     proceedWithPdfExport(callbackPtr, title, extractedContent);
                                 },
-                                [=](const drogon::orm::DrogonDbException &e) {
+                                [=](const drogon::orm::DrogonDbException& e) {
                                     ResponseUtils::sendError(*callbackPtr,
                                                              "Database error: " + std::string(e.base().what()),
                                                              k500InternalServerError);
@@ -2497,7 +2497,7 @@ void DocumentController::exportPdf(const HttpRequestPtr &req, std::function<void
                     // 内容不为空，直接导出
                     proceedWithPdfExport(callbackPtr, title, content);
                 },
-                [=](const drogon::orm::DrogonDbException &e) {
+                [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
                 },
@@ -2506,8 +2506,8 @@ void DocumentController::exportPdf(const HttpRequestPtr &req, std::function<void
 }
 
 // 辅助函数：执行 PDF 导出
-static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr,
-                                 const std::string &title, const std::string &content) {
+static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr,
+                                 const std::string& title, const std::string& content) {
     std::string converterUrl = getConverterServiceUrl();
     auto client = drogon::HttpClient::newHttpClient(converterUrl);
     auto converterReq = drogon::HttpRequest::newHttpRequest();
@@ -2521,7 +2521,7 @@ static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpRe
     Json::StreamWriterBuilder builder;
     converterReq->setBody(Json::writeString(builder, converterPayload));
 
-    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr& resp) {
         if (result != drogon::ReqResult::Ok) {
             std::string errorMsg =
                     "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
@@ -2579,8 +2579,8 @@ static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpRe
 }
 
 // 辅助函数：执行 Markdown 导出
-static void proceedWithMarkdownExport(std::shared_ptr<std::function<void(const HttpResponsePtr &)>> callbackPtr,
-                                      const std::string &title, const std::string &content) {
+static void proceedWithMarkdownExport(std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr,
+                                      const std::string& title, const std::string& content) {
     std::string converterUrl = getConverterServiceUrl();
     auto client = drogon::HttpClient::newHttpClient(converterUrl);
     auto converterReq = drogon::HttpRequest::newHttpRequest();
@@ -2593,7 +2593,7 @@ static void proceedWithMarkdownExport(std::shared_ptr<std::function<void(const H
     Json::StreamWriterBuilder builder;
     converterReq->setBody(Json::writeString(builder, converterPayload));
 
-    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr &resp) {
+    client->sendRequest(converterReq, [=](drogon::ReqResult result, const drogon::HttpResponsePtr& resp) {
         if (result != drogon::ReqResult::Ok) {
             std::string errorMsg =
                     "Failed to connect to converter service: " + std::to_string(static_cast<int>(result));
@@ -2651,8 +2651,8 @@ static void proceedWithMarkdownExport(std::shared_ptr<std::function<void(const H
 }
 
 // Markdown 文档导出
-void DocumentController::exportMarkdown(const HttpRequestPtr &req,
-                                        std::function<void(const HttpResponsePtr &)> &&callback) {
+void DocumentController::exportMarkdown(const HttpRequestPtr& req,
+                                        std::function<void(const HttpResponsePtr&)>&& callback) {
     auto routingParams = req->getRoutingParameters();
     if (routingParams.empty()) {
         ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
@@ -2667,7 +2667,7 @@ void DocumentController::exportMarkdown(const HttpRequestPtr &req,
     }
     int userId = std::stoi(userIdStr);
 
-    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr &)>>(std::move(callback));
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
         if (!hasPermission) {
             ResponseUtils::sendError(*callbackPtr, "Forbidden", k403Forbidden);
@@ -2685,7 +2685,7 @@ void DocumentController::exportMarkdown(const HttpRequestPtr &req,
                 "FROM document d "
                 "LEFT JOIN document_version dv ON d.last_published_version_id = dv.id "
                 "WHERE d.id = $1",
-                [=](const drogon::orm::Result &r) {
+                [=](const drogon::orm::Result& r) {
                     if (r.empty()) {
                         ResponseUtils::sendError(*callbackPtr, "Document not found", k404NotFound);
                         return;
@@ -2705,7 +2705,7 @@ void DocumentController::exportMarkdown(const HttpRequestPtr &req,
                                 "WHERE doc_id = $1 AND (content_html IS NOT NULL OR content_text IS NOT NULL) "
                                 "ORDER BY version_number DESC "
                                 "LIMIT 1",
-                                [=](const drogon::orm::Result &versionResult) {
+                                [=](const drogon::orm::Result& versionResult) {
                                     // 在 lambda 内部创建局部变量，避免引用外部变量导致的生命周期问题
                                     std::string extractedContent;
 
@@ -2749,7 +2749,7 @@ void DocumentController::exportMarkdown(const HttpRequestPtr &req,
                                     // 继续导出流程，使用局部变量
                                     proceedWithMarkdownExport(callbackPtr, title, extractedContent);
                                 },
-                                [=](const drogon::orm::DrogonDbException &e) {
+                                [=](const drogon::orm::DrogonDbException& e) {
                                     ResponseUtils::sendError(*callbackPtr,
                                                              "Database error: " + std::string(e.base().what()),
                                                              k500InternalServerError);
@@ -2761,7 +2761,7 @@ void DocumentController::exportMarkdown(const HttpRequestPtr &req,
                     // 内容不为空，直接导出
                     proceedWithMarkdownExport(callbackPtr, title, content);
                 },
-                [=](const drogon::orm::DrogonDbException &e) {
+                [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
                 },

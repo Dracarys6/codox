@@ -1,0 +1,85 @@
+services:
+  meilisearch:
+    image: getmeili/meilisearch:v1.7
+    container_name: codox-meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: 8a7b6c5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d-7e8f9a0b1c2d3e4f5g6h7i8j9k0l
+    ports:
+      - "7700:7700"
+    volumes:
+      - meili_data:/meili_data
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-09-22T00-33-43Z
+    container_name: codox-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  collab-service:
+    image: node:20-alpine
+    container_name: codox-collab
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "npm install && npm run dev"
+    environment:
+      PORT: 1234
+      COLLAB_JWT_SECRET: aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789ab+cdefgh=
+    volumes:
+      - ./collab-service:/app
+    ports:
+      - "1234:1234"
+  doc-converter-service:
+    image: node:20-alpine
+    container_name: codox-doc-converter
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "npm install && npm start"
+    environment:
+      PORT: 3002
+    volumes:
+      - ./doc-converter-service:/app
+    ports:
+      - "3002:3002"
+
+  frontend:
+    image: node:20-alpine
+    container_name: codox-frontend
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    environment:
+      VITE_API_BASE_URL: http://host.docker.internal:8080/api
+      VITE_WS_URL: ws://localhost:1234
+      VITE_NOTIFICATION_WS_URL: ws://localhost:1234/ws/notifications
+      VITE_DOC_CONVERTER_URL: http://localhost:3002
+      VITE_MEILISEARCH_URL: http://localhost:7700
+      VITE_MINIO_ENDPOINT: http://localhost:9000
+      VITE_PROXY_TARGET: http://host.docker.internal:8080
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - collab-service
+
+networks:
+  default:
+    name: codox_net
+
+volumes:
+  meili_data:
+  minio_data:
+
+
