@@ -2,6 +2,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Collaboration from '@tiptap/extension-collaboration';
+import { CollaborationCursor } from '../extensions/CollaborationCursor';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
@@ -15,6 +16,7 @@ import { WebsocketProvider } from 'y-websocket';
 import { apiClient } from '../api/client';
 import { calculateSHA256, uploadSnapshot } from '../utils/snapshot';
 import { RichTextToolbar } from './RichTextToolbar';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DocumentEditorProps {
     docId: number;
@@ -23,6 +25,7 @@ interface DocumentEditorProps {
 }
 
 export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorProps) {
+    const { user } = useAuth();
     const providerRef = useRef<WebsocketProvider | null>(null);
     const saveIntervalRef = useRef<number | null>(null);
     const [isConnected, setIsConnected] = useState(false);
@@ -43,8 +46,19 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
             '#a78bfa',
             '#f472b6',
         ];
-        return colors[docId % colors.length];
-    }, [docId]);
+        const seed = user?.id ?? docId;
+        return colors[seed % colors.length];
+    }, [docId, user]);
+
+    const displayName = useMemo(() => {
+        const profileNickname = user?.profile?.nickname;
+        const legacyNickname = (user as any)?.nickname;
+        if (profileNickname) return profileNickname;
+        if (legacyNickname) return legacyNickname;
+        if (user?.email) return user.email.split('@')[0] || user.email;
+        if (user?.id) return `用户-${user.id}`;
+        return `访客-${docId}`;
+    }, [docId, user]);
 
     // 获取 WebSocket URL（从环境变量或使用默认值）
     const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:1234';
@@ -81,6 +95,14 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
                             document: collabResources.ydoc,
                             field: 'prosemirror',
                         }),
+                        CollaborationCursor.configure({
+                            provider: collabResources.provider,
+                            user: {
+                                name: displayName,
+                                color: userColor,
+                            },
+                            field: 'prosemirror',
+                        } as any),
                     ]
                     : []),
             ],
@@ -170,7 +192,7 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
                 providerRef.current = provider;
 
                 provider.awareness.setLocalStateField('user', {
-                    name: `User-${docId}`,
+                    name: displayName,
                     color: userColor,
                 });
 
@@ -195,7 +217,17 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
             ydoc.destroy();
             providerRef.current = null;
         };
-    }, [docId, wsUrl, userColor]);
+    }, [displayName, docId, userColor, wsUrl]);
+
+    useEffect(() => {
+        if (!collabResources?.provider) {
+            return;
+        }
+        collabResources.provider.awareness.setLocalStateField('user', {
+            name: displayName,
+            color: userColor,
+        });
+    }, [collabResources, displayName, userColor]);
 
     useEffect(() => {
         if (!editor || !collabResources) return;
