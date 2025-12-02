@@ -2769,3 +2769,48 @@ void DocumentController::exportMarkdown(const HttpRequestPtr& req,
                 std::to_string(docId));
     });
 }
+
+// 获取当前用户在文档上的权限：owner/editor/viewer/none
+void DocumentController::getPermission(const HttpRequestPtr& req,
+                                       std::function<void(const HttpResponsePtr&)>&& callback) {
+    // 1. 获取 doc_id
+    auto routingParams = req->getRoutingParameters();
+    if (routingParams.empty()) {
+        ResponseUtils::sendError(callback, "Document ID is required", k400BadRequest);
+        return;
+    }
+    int docId;
+    try {
+        docId = std::stoi(routingParams[0]);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid document ID", k400BadRequest);
+        return;
+    }
+
+    // 2. 获取 user_id
+    std::string userIdStr = req->getParameter("user_id");
+    if (userIdStr.empty()) {
+        ResponseUtils::sendError(callback, "User ID not found", k401Unauthorized);
+        return;
+    }
+    int userId;
+    try {
+        userId = std::stoi(userIdStr);
+    } catch (...) {
+        ResponseUtils::sendError(callback, "Invalid user ID", k400BadRequest);
+        return;
+    }
+
+    // 3. 调用 PermissionUtils 检查实际权限
+    auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
+    PermissionUtils::checkPermission(
+            docId, userId,
+            [callbackPtr](const std::string& permission) {
+                Json::Value json;
+                json["permission"] = permission;  // owner / editor / viewer / none
+                ResponseUtils::sendSuccess(*callbackPtr, json, k200OK);
+            },
+            [callbackPtr](const std::string& error) {
+                ResponseUtils::sendError(*callbackPtr, "Failed to check permission: " + error, k500InternalServerError);
+            });
+}

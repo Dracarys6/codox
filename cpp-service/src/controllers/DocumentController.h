@@ -27,50 +27,55 @@ public:
     ADD_METHOD_TO(DocumentController::exportWord, "/api/docs/{id}/export/word", Get, "JwtAuthFilter");
     ADD_METHOD_TO(DocumentController::exportPdf, "/api/docs/{id}/export/pdf", Get, "JwtAuthFilter");
     ADD_METHOD_TO(DocumentController::exportMarkdown, "/api/docs/{id}/export/markdown", Get, "JwtAuthFilter");
+    // 查询当前用户在文档上的权限（owner/editor/viewer/none）
+    ADD_METHOD_TO(DocumentController::getPermission, "/api/docs/{id}/permission", Get, "JwtAuthFilter");
 
     METHOD_LIST_END
 
     // 创建文档
-    void create(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void create(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 获取文档列表
-    void list(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void list(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 获取文档详情
-    void get(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void get(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 更新文档
-    void update(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void update(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 删除文档
-    void deleteDoc(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void deleteDoc(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 获取文档acl(权限列表)
-    void getAcl(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void getAcl(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 更新文档acl
-    void updateAcl(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void updateAcl(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 获取文档版本列表
-    void getVersions(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void getVersions(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 获取单个版本详情
-    void getVersion(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void getVersion(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 手动创建版本
-    void createVersion(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void createVersion(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 恢复版本
-    void restoreVersion(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void restoreVersion(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 获取版本差异
-    void getVersionDiff(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void getVersionDiff(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 文档导入接口
-    void importMarkdown(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void importMarkdown(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 
     // 文档导出接口
-    void exportWord(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
-    void exportPdf(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
-    void exportMarkdown(const HttpRequestPtr &req, std::function<void(const HttpResponsePtr &)> &&callback);
+    void exportWord(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+    void exportPdf(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+    void exportMarkdown(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
+
+    // 获取当前用户在文档上的权限
+    void getPermission(const HttpRequestPtr& req, std::function<void(const HttpResponsePtr&)>&& callback);
 };

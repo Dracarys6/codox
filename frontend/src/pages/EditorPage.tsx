@@ -32,6 +32,7 @@ export function EditorPage() {
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [versionsError, setVersionsError] = useState<string | null>(null);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [permission, setPermission] = useState<'owner' | 'editor' | 'viewer' | 'none'>('viewer');
   // 用于强制重新加载编辑器的 key
   const [editorKey, setEditorKey] = useState(0);
 
@@ -53,6 +54,16 @@ export function EditorPage() {
     loadDocument(docId);
     loadVersions(docId);
     setAclEntries([]);
+    // 加载当前用户在文档上的权限
+    (async () => {
+      try {
+        const permResp = await apiClient.getDocumentPermission(docId);
+        setPermission(permResp.permission);
+      } catch {
+        // 出错时默认视为 viewer
+        setPermission('viewer');
+      }
+    })();
   }, [docId, id, navigate, searchParams, setSearchParams]);
   const handleAclLoaded = (data: DocumentAcl | null) => {
     setAclEntries(data?.acl || []);
@@ -62,6 +73,12 @@ export function EditorPage() {
     if (!document || !user) return false;
     return document.owner_id === user.id;
   }, [document, user]);
+
+  const canEdit = useMemo(() => {
+    if (!user || !document) return false;
+    if (document.owner_id === user.id) return true;
+    return permission === 'editor';
+  }, [document, user, permission]);
 
   const roleStats = useMemo(() => {
     return aclEntries.reduce(
@@ -232,7 +249,12 @@ export function EditorPage() {
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   onBlur={handleTitleBlur}
-                  className="text-lg font-semibold bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-primary/30 rounded px-2 py-1 w-full max-w-md"
+                  disabled={!canEdit}
+                  className={`text-lg font-semibold bg-transparent border-none rounded px-2 py-1 w-full max-w-md ${
+                    canEdit
+                      ? 'focus:outline-none focus:ring-2 focus:ring-primary/30'
+                      : 'text-gray-500 cursor-not-allowed'
+                  }`}
                   placeholder="未命名文档"
                 />
               </div>
@@ -253,7 +275,7 @@ export function EditorPage() {
               <ExportMenu docId={docId} docTitle={title || document?.title} variant="button" />
               <button
                 onClick={handleSave}
-                disabled={isSaving}
+                disabled={isSaving || !canEdit}
                 className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-custom flex items-center gap-2"
                 title="保存"
               >
@@ -290,6 +312,7 @@ export function EditorPage() {
               <DocumentEditor
                 key={`editor-${docId}-${editorKey}`}
                 docId={docId}
+                canEdit={canEdit}
                 onSave={async () => {
                   setLastSavedAt(new Date().toLocaleTimeString('zh-CN'));
                   setIsSaving(false);
@@ -306,8 +329,12 @@ export function EditorPage() {
                   }
                 }}
                 onSaveReady={(saveFn) => {
-                  // 保存函数准备好时，存储到 ref
-                  saveRequestRef.current = saveFn;
+                  // 保存函数准备好时，存储到 ref（只在可编辑时启用）
+                  if (canEdit) {
+                    saveRequestRef.current = saveFn;
+                  } else {
+                    saveRequestRef.current = null;
+                  }
                 }}
               />
             </section>

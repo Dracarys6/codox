@@ -72,7 +72,7 @@ void CollaborationController::getToken(const HttpRequestPtr& req,
     }
     int docId = json["doc_id"].asInt();
 
-    // 3.检查权限 (需要viewer或更高权限)
+    // 3.检查权限 (需要 viewer 或更高权限；编辑权限由前端控制只读/可写)
     auto callbackPtr = std::make_shared<std::function<void(const HttpResponsePtr&)>>(std::move(callback));
     PermissionUtils::hasPermission(docId, userId, "viewer", [=](bool hasPermission) {
         if (!hasPermission) {

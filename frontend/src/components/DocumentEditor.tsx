@@ -22,9 +22,11 @@ interface DocumentEditorProps {
     docId: number;
     onSave?: () => void;
     onSaveReady?: (saveFn: () => Promise<void>) => void; // 保存函数准备好时的回调
+    // 是否允许当前用户编辑；为 false 时只读查看
+    canEdit?: boolean;
 }
 
-export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorProps) {
+export function DocumentEditor({ docId, onSave, onSaveReady, canEdit = true }: DocumentEditorProps) {
     const { user } = useAuth();
     const providerRef = useRef<WebsocketProvider | null>(null);
     const saveIntervalRef = useRef<number | null>(null);
@@ -112,9 +114,9 @@ export function DocumentEditor({ docId, onSave, onSaveReady }: DocumentEditorPro
                     class: 'focus:outline-none prose prose-lg max-w-none min-h-[70vh] pb-16',
                 },
             },
-            editable: true,
+            editable: canEdit,
         },
-        [collabResources?.ydoc, docId]
+        [collabResources?.ydoc, docId, canEdit]
     );
 
     useEffect(() => {
