@@ -360,16 +360,16 @@ class ApiClient {
     /**
      * 获取引导快照
      */
-    async getBootstrap(docId: number): Promise<{ 
-        snapshot_url: string | null; 
-        sha256: string | null; 
+    async getBootstrap(docId: number): Promise<{
+        snapshot_url: string | null;
+        sha256: string | null;
         version_id: number | null;
         content_html?: string | null;
         content_text?: string | null;
     }> {
-        const response = await this.client.get<{ 
-            snapshot_url: string | null; 
-            sha256: string | null; 
+        const response = await this.client.get<{
+            snapshot_url: string | null;
+            sha256: string | null;
             version_id: number | null;
             content_html?: string | null;
             content_text?: string | null;
@@ -385,7 +385,7 @@ class ApiClient {
     async downloadSnapshot(docId: number): Promise<ArrayBuffer> {
         const response = await this.client.get(
             `/collab/snapshot/${docId}/download`,
-            { 
+            {
                 responseType: 'arraybuffer',
                 headers: {
                     'Accept': 'application/octet-stream'
@@ -539,8 +539,8 @@ class ApiClient {
             typeof roleOrRoles === 'string'
                 ? { role: roleOrRoles }
                 : {
-                      roles: roleOrRoles,
-                  };
+                    roles: roleOrRoles,
+                };
         const response = await this.client.post<{ message: string; user: AdminUser }>(
             `/admin/users/${userId}/roles`,
             payload
@@ -616,23 +616,66 @@ class ApiClient {
     }
 
     /**
-     * 导出 Word 文档
+     * 导出 Word 文档（流式二进制下载）
      */
-    async exportWord(docId: number): Promise<{ data: string; filename: string; mime_type: string }> {
-        const response = await this.client.get<{ data: string; filename: string; mime_type: string }>(
-            `/docs/${docId}/export/word`
-        );
-        return response.data;
+    async exportWord(docId: number): Promise<{ blob: Blob; filename: string; mime_type: string }> {
+        const response = await this.client.get<Blob>(`/docs/${docId}/export/word`, {
+            responseType: 'blob',
+        });
+
+        // 从 Content-Disposition 中解析文件名
+        const disposition = (response.headers['content-disposition'] as string | undefined) || '';
+        let filename = `document-${docId}.docx`;
+        const filenameMatch =
+            disposition.match(/filename\*?=(?:UTF-8'')?\"?([^\";]+)/i) ||
+            disposition.match(/filename="?([^\";]+)"?/i);
+        if (filenameMatch && filenameMatch[1]) {
+            try {
+                filename = decodeURIComponent(filenameMatch[1]);
+            } catch {
+                filename = filenameMatch[1];
+            }
+        }
+
+        const mimeType =
+            (response.headers['content-type'] as string | undefined) ||
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+        return {
+            blob: response.data,
+            filename,
+            mime_type: mimeType,
+        };
     }
 
     /**
-     * 导出 PDF 文档
+     * 导出 PDF 文档（流式二进制下载）
      */
-    async exportPdf(docId: number): Promise<{ data: string; filename: string; mime_type: string }> {
-        const response = await this.client.get<{ data: string; filename: string; mime_type: string }>(
-            `/docs/${docId}/export/pdf`
-        );
-        return response.data;
+    async exportPdf(docId: number): Promise<{ blob: Blob; filename: string; mime_type: string }> {
+        const response = await this.client.get<Blob>(`/docs/${docId}/export/pdf`, {
+            responseType: 'blob',
+        });
+
+        const disposition = (response.headers['content-disposition'] as string | undefined) || '';
+        let filename = `document-${docId}.pdf`;
+        const filenameMatch =
+            disposition.match(/filename\*?=(?:UTF-8'')?\"?([^\";]+)/i) ||
+            disposition.match(/filename="?([^\";]+)"?/i);
+        if (filenameMatch && filenameMatch[1]) {
+            try {
+                filename = decodeURIComponent(filenameMatch[1]);
+            } catch {
+                filename = filenameMatch[1];
+            }
+        }
+
+        const mimeType = (response.headers['content-type'] as string | undefined) || 'application/pdf';
+
+        return {
+            blob: response.data,
+            filename,
+            mime_type: mimeType,
+        };
     }
 
     /**
