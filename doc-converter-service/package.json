@@ -16,7 +16,7 @@
     "express": "^5.1.0",
     "fontkit": "^2.0.4",
     "fs-extra": "^11.3.2",
-    "html-to-docx": "^2.5.1",
+    "html-to-docx": "^1.8.0",
     "marked": "^15.0.12",
     "pdf-lib": "^1.17.1",
     "uuid": "^13.0.0"

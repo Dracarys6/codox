@@ -2269,6 +2269,7 @@ void DocumentController::exportWord(const HttpRequestPtr& req, std::function<voi
 }
 
 // 辅助函数：执行 Word 导出（通过 doc-converter-service 流式生成，再将二进制文件透传给前端）
+// 辅助函数：执行 Word 导出（通过 doc-converter-service 流式生成，再将二进制文件透传给前端）
 static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr,
                                   const std::string& title, const std::string& content) {
     std::string converterUrl = getConverterServiceUrl();
@@ -2295,18 +2296,37 @@ static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpR
         }
         if (resp->getStatusCode() != k200OK) {
             std::string errorMsg = "Converter service returned error: " + std::to_string(resp->getStatusCode());
-            std::string responseBody;
-            if (resp->getBody().size() > 0) {
-                responseBody = std::string(resp->getBody().data(), resp->getBody().size());
-                errorMsg += " - " + responseBody.substr(0, 500);
+            auto errorBody = resp->getBody();
+            if (errorBody.length() > 0) {
+                // 尝试解析 JSON 错误信息
+                try {
+                    auto jsonPtr = resp->getJsonObject();
+                    if (jsonPtr && jsonPtr->isMember("error")) {
+                        errorMsg += " - " + (*jsonPtr)["error"].asString();
+                    } else {
+                        // 如果不是 JSON，尝试读取前 500 个字符（可能是文本错误）
+                        std::string responseBody(errorBody.data(), std::min(errorBody.length(), size_t(500)));
+                        if (responseBody.find_first_of('\0') == std::string::npos) {  // 确保是文本
+                            errorMsg += " - " + responseBody;
+                        }
+                    }
+                } catch (...) {
+                    // JSON 解析失败，忽略
+                }
             }
-            std::cerr << "Word export: Converter service error. Status: " << resp->getStatusCode()
-                      << ", Body: " << responseBody << std::endl;
+            std::cerr << "Word export: Converter service error. Status: " << resp->getStatusCode() << std::endl;
             ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
             return;
         }
 
         // 此时 converter 服务已经返回二进制 DOCX 文件，直接透传给前端
+        auto body = resp->getBody();
+        if (body.empty()) {
+            ResponseUtils::sendError(*callbackPtr, "Converter service returned empty response",
+                                     k500InternalServerError);
+            return;
+        }
+
         auto fileResp = HttpResponse::newHttpResponse();
         fileResp->setStatusCode(k200OK);
 
@@ -2316,8 +2336,8 @@ static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpR
                                   drogon::utils::urlEncode(title + ".docx");
         fileResp->addHeader("Content-Disposition", disposition);
 
-        // 拷贝二进制内容
-        fileResp->setBody(std::string(resp->getBody().data(), resp->getBody().size()));
+        // 拷贝二进制内容（使用 body.data() 和 body.length()）
+        fileResp->setBody(std::string(body.data(), body.length()));
 
         (*callbackPtr)(fileResp);
     });
@@ -2513,18 +2533,37 @@ static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpRe
         }
         if (resp->getStatusCode() != k200OK) {
             std::string errorMsg = "Converter service returned error: " + std::to_string(resp->getStatusCode());
-            std::string responseBody;
-            if (resp->getBody().size() > 0) {
-                responseBody = std::string(resp->getBody().data(), resp->getBody().size());
-                errorMsg += " - " + responseBody.substr(0, 500);
+            auto errorBody = resp->getBody();
+            if (errorBody.length() > 0) {
+                // 尝试解析 JSON 错误信息
+                try {
+                    auto jsonPtr = resp->getJsonObject();
+                    if (jsonPtr && jsonPtr->isMember("error")) {
+                        errorMsg += " - " + (*jsonPtr)["error"].asString();
+                    } else {
+                        // 如果不是 JSON，尝试读取前 500 个字符（可能是文本错误）
+                        std::string responseBody(errorBody.data(), std::min(errorBody.length(), size_t(500)));
+                        if (responseBody.find_first_of('\0') == std::string::npos) {  // 确保是文本
+                            errorMsg += " - " + responseBody;
+                        }
+                    }
+                } catch (...) {
+                    // JSON 解析失败，忽略
+                }
             }
-            std::cerr << "PDF export: Converter service error. Status: " << resp->getStatusCode()
-                      << ", Body: " << responseBody << std::endl;
+            std::cerr << "PDF export: Converter service error. Status: " << resp->getStatusCode() << std::endl;
             ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
             return;
         }
 
         // 此时 converter 服务已经返回二进制 PDF 文件，直接透传给前端
+        auto body = resp->getBody();
+        if (body.empty()) {
+            ResponseUtils::sendError(*callbackPtr, "Converter service returned empty response",
+                                     k500InternalServerError);
+            return;
+        }
+
         auto fileResp = HttpResponse::newHttpResponse();
         fileResp->setStatusCode(k200OK);
 
@@ -2533,7 +2572,8 @@ static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpRe
                                   drogon::utils::urlEncode(title + ".pdf");
         fileResp->addHeader("Content-Disposition", disposition);
 
-        fileResp->setBody(std::string(resp->getBody().data(), resp->getBody().size()));
+        // 拷贝二进制内容（使用 body.data() 和 body.length()）
+        fileResp->setBody(std::string(body.data(), body.length()));
 
         (*callbackPtr)(fileResp);
     });

@@ -22,13 +22,28 @@ void SearchService::indexDocument(int docId, const std::string& title, const std
     req->setMethod(drogon::Post);
     req->setPath("/indexes/documents/documents");
     req->addHeader("Authorization", "Bearer " + getMasterKey());
+    req->setContentTypeCode(drogon::CT_APPLICATION_JSON);
     req->setBody(body);
-    req->removeHeader("Content-Type");
-    req->addHeader("Content-Type", "application/json");
-    // 异步处理：失败时记录错误日志
+    // 异步处理：记录索引结果，便于排查问题
+    LOG_INFO << "[SearchService] indexDocument called for docId=" << docId << ", title=" << title;
     client->sendRequest(req, [docId](drogon::ReqResult result, const drogon::HttpResponsePtr& resp) {
         if (result != drogon::ReqResult::Ok) {
-            LOG_ERROR << "Failed to index document: " << docId;
+            LOG_ERROR << "[SearchService] Failed to index document (network error). docId=" << docId
+                      << ", result=" << static_cast<int>(result);
+            return;
+        }
+
+        auto status = resp->getStatusCode();
+        if (status != drogon::k202Accepted && status != drogon::k200OK) {
+            std::string bodyStr;
+            auto bodyView = resp->getBody();
+            if (!bodyView.empty()) {
+                bodyStr.assign(bodyView.data(), std::min<size_t>(bodyView.length(), 500));  // 只打印前 500 字符
+            }
+            LOG_ERROR << "[SearchService] Meilisearch returned status " << status << " when indexing docId=" << docId
+                      << ", body=" << bodyStr;
+        } else {
+            LOG_INFO << "[SearchService] Indexed document successfully. docId=" << docId << ", status=" << status;
         }
     });
 }
