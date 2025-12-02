@@ -2269,7 +2269,7 @@ void DocumentController::exportWord(const HttpRequestPtr& req, std::function<voi
     });
 }
 
-// 辅助函数：执行 Word 导出
+// 辅助函数：执行 Word 导出（通过 doc-converter-service 流式生成，再将二进制文件透传给前端）
 static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr,
                                   const std::string& title, const std::string& content) {
     std::string converterUrl = getConverterServiceUrl();
@@ -2307,37 +2307,19 @@ static void proceedWithWordExport(std::shared_ptr<std::function<void(const HttpR
             return;
         }
 
-        auto jsonPtr = resp->getJsonObject();
-        if (!jsonPtr) {
-            std::string errorMsg = "Invalid JSON response from converter service";
-            if (resp->getBody().size() > 0) {
-                errorMsg += ": " + std::string(resp->getBody().data(), std::min(resp->getBody().size(), size_t(200)));
-            }
-            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
-            return;
-        }
-
-        if (jsonPtr->isMember("error")) {
-            std::string errorMsg = "Conversion failed: " + (*jsonPtr)["error"].asString();
-            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
-            return;
-        }
-
-        if (!jsonPtr->isMember("data")) {
-            ResponseUtils::sendError(*callbackPtr, "Invalid conversion response: missing 'data' field",
-                                     k500InternalServerError);
-            return;
-        }
-
-        std::string base64 = (*jsonPtr)["data"].asString();
-        std::string filename = (*jsonPtr).get("filename", title + ".docx").asString();
-
-        Json::Value responseJson;
-        responseJson["data"] = base64;
-        responseJson["filename"] = filename;
-        responseJson["mime_type"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-        auto fileResp = HttpResponse::newHttpJsonResponse(responseJson);
+        // 此时 converter 服务已经返回二进制 DOCX 文件，直接透传给前端
+        auto fileResp = HttpResponse::newHttpResponse();
         fileResp->setStatusCode(k200OK);
+
+        // 设置内容类型和下载文件名
+        fileResp->setContentTypeString("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        std::string disposition = "attachment; filename=\"" + title + ".docx\"; filename*=UTF-8''" +
+                                  drogon::utils::urlEncode(title + ".docx");
+        fileResp->addHeader("Content-Disposition", disposition);
+
+        // 拷贝二进制内容
+        fileResp->setBody(std::string(resp->getBody().data(), resp->getBody().size()));
+
         (*callbackPtr)(fileResp);
     });
 }
@@ -2505,7 +2487,7 @@ void DocumentController::exportPdf(const HttpRequestPtr& req, std::function<void
     });
 }
 
-// 辅助函数：执行 PDF 导出
+// 辅助函数：执行 PDF 导出（通过 doc-converter-service 流式生成，再将二进制文件透传给前端）
 static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpResponsePtr&)>> callbackPtr,
                                  const std::string& title, const std::string& content) {
     std::string converterUrl = getConverterServiceUrl();
@@ -2543,37 +2525,17 @@ static void proceedWithPdfExport(std::shared_ptr<std::function<void(const HttpRe
             return;
         }
 
-        auto jsonPtr = resp->getJsonObject();
-        if (!jsonPtr) {
-            std::string errorMsg = "Invalid JSON response from converter service";
-            if (resp->getBody().size() > 0) {
-                errorMsg += ": " + std::string(resp->getBody().data(), std::min(resp->getBody().size(), size_t(200)));
-            }
-            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
-            return;
-        }
-
-        if (jsonPtr->isMember("error")) {
-            std::string errorMsg = "Conversion failed: " + (*jsonPtr)["error"].asString();
-            ResponseUtils::sendError(*callbackPtr, errorMsg, k500InternalServerError);
-            return;
-        }
-
-        if (!jsonPtr->isMember("data")) {
-            ResponseUtils::sendError(*callbackPtr, "Invalid conversion response: missing 'data' field",
-                                     k500InternalServerError);
-            return;
-        }
-
-        std::string base64 = (*jsonPtr)["data"].asString();
-        std::string filename = (*jsonPtr).get("filename", title + ".pdf").asString();
-
-        Json::Value responseJson;
-        responseJson["data"] = base64;
-        responseJson["filename"] = filename;
-        responseJson["mime_type"] = "application/pdf";
-        auto fileResp = HttpResponse::newHttpJsonResponse(responseJson);
+        // 此时 converter 服务已经返回二进制 PDF 文件，直接透传给前端
+        auto fileResp = HttpResponse::newHttpResponse();
         fileResp->setStatusCode(k200OK);
+
+        fileResp->setContentTypeString("application/pdf");
+        std::string disposition = "attachment; filename=\"" + title + ".pdf\"; filename*=UTF-8''" +
+                                  drogon::utils::urlEncode(title + ".pdf");
+        fileResp->addHeader("Content-Disposition", disposition);
+
+        fileResp->setBody(std::string(resp->getBody().data(), resp->getBody().size()));
+
         (*callbackPtr)(fileResp);
     });
 }

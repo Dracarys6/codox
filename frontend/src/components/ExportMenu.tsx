@@ -22,58 +22,39 @@ export function ExportMenu({ docId, docTitle, variant = 'button' }: ExportMenuPr
         setShowDropdown(false);
 
         try {
-            let result: any;
             let filename: string;
             let mimeType: string;
-            let data: string;
+            let blob: Blob;
 
             if (format === 'word') {
-                result = await apiClient.exportWord(docId);
+                const result = await apiClient.exportWord(docId);
                 filename = result.filename || `${docTitle || 'document'}.docx`;
-                mimeType = result.mime_type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-                data = result.data;
+                mimeType =
+                    result.mime_type ||
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+                blob = result.blob;
             } else if (format === 'pdf') {
-                result = await apiClient.exportPdf(docId);
+                const result = await apiClient.exportPdf(docId);
                 filename = result.filename || `${docTitle || 'document'}.pdf`;
                 mimeType = result.mime_type || 'application/pdf';
-                data = result.data;
+                blob = result.blob;
             } else {
-                // Markdown
-                result = await apiClient.exportMarkdown(docId);
+                // Markdown 仍然使用 JSON 文本返回
+                const result = await apiClient.exportMarkdown(docId);
                 filename = result.filename || `${docTitle || 'document'}.md`;
                 mimeType = result.mime_type || 'text/markdown';
-                data = result.markdown;
+                blob = new Blob([result.markdown], { type: mimeType });
             }
 
-            // 下载文件
-            if (format === 'markdown') {
-                // Markdown 直接下载文本
-                const blob = new Blob([data], { type: mimeType });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            } else {
-                // Word 和 PDF 需要解码 base64
-                const binaryString = atob(data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                const blob = new Blob([bytes], { type: mimeType });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }
+            // 统一的下载逻辑：通过 Blob 触发浏览器下载
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
 
             toast.success(`${format.toUpperCase()} 导出成功！`);
         } catch (error: any) {
