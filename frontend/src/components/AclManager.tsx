@@ -216,14 +216,21 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
 
     const handleUpdatePermission = async (userId: number, permission: 'owner' | 'editor' | 'viewer') => {
         if (!canManage) return;
+        if (permission === 'owner') {
+            // 前端不支持直接通过 ACL 面板修改 owner，保持与后端约束一致
+            setError('不能通过此界面修改所有者权限');
+            return;
+        }
         try {
             setSaving(true);
             setError(null);
             setSuccess(null);
 
             const currentAcl = acl?.acl || [];
+            // 只提交非 owner 的 ACL 项，owner 由后端自动保留
+            const nonOwnerAcl = currentAcl.filter((entry) => entry.permission !== 'owner');
             const updatedAcl: UpdateAclRequest = {
-                acl: currentAcl.map((entry) =>
+                acl: nonOwnerAcl.map((entry) =>
                     entry.user_id === userId ? { ...entry, permission } : entry
                 ),
             };
@@ -252,10 +259,10 @@ export function AclManager({ docId, onUpdate, onLoaded, isOwner = true }: AclMan
             setSuccess(null);
 
             const currentAcl = acl?.acl || [];
-            // 过滤掉要删除的用户，但保留owner
+            // 过滤掉要删除的用户，同时不提交 owner（owner 由后端自动保留）
             const updatedAcl: UpdateAclRequest = {
                 acl: currentAcl.filter(
-                    (entry) => entry.user_id !== userId || entry.permission === 'owner'
+                    (entry) => entry.permission !== 'owner' && entry.user_id !== userId
                 ),
             };
 
