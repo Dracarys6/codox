@@ -29,7 +29,7 @@ app.use(express.urlencoded({extended: true, limit: '50mb'}));
 app.post('/convert/html-to-word', async (req, res) => {
     try {
         const {html, title = 'Document'} = req.body;
-
+        
         if (!html) {
             return res.status(400).json({error: 'HTML content is required'});
         }
@@ -69,7 +69,7 @@ app.post('/convert/html-to-word', async (req, res) => {
 app.post('/convert/text-to-pdf', async (req, res) => {
     try {
         const {text, title = 'Document'} = req.body;
-
+        
         if (!text) {
             return res.status(400).json({error: 'Text content is required'});
         }
@@ -77,14 +77,14 @@ app.post('/convert/text-to-pdf', async (req, res) => {
         // 创建 PDF 文档
         const pdfDoc = await PDFDocument.create();
         pdfDoc.registerFontkit(fontkit);
-
+        
         const page = pdfDoc.addPage([595, 842]);  // A4 尺寸
-
+        
         // 尝试加载支持中文的字体
         let font;
         let isChineseFont = false;  // 标记是否成功加载了中文字体
         const hasNonAscii = /[^\x00-\x7F]/.test(text);
-
+        
         if (hasNonAscii) {
             // 简化版字体加载逻辑：
             // 1）优先使用项目自带的 NotoSansCJK 字体（fonts/ 目录）
@@ -150,7 +150,7 @@ app.post('/convert/text-to-pdf', async (req, res) => {
             font = await pdfDoc.embedFont(StandardFonts.Helvetica);
             isChineseFont = false;
         }
-
+        
         // 添加文本（简单实现，实际可以支持更复杂的格式）
         const lines = text.split('\n');
         let currentPage = page;
@@ -158,7 +158,7 @@ app.post('/convert/text-to-pdf', async (req, res) => {
         const lineHeight = 20;
         const margin = 50;
         const fontSize = 12;
-
+        
         // 尝试绘制文本
         try {
             lines.forEach(line => {
@@ -167,13 +167,13 @@ app.post('/convert/text-to-pdf', async (req, res) => {
                     y -= lineHeight / 2;  // 空行间距减半
                     return;
                 }
-
+                
                 if (y < margin + lineHeight) {
                     // 需要新页面
                     currentPage = pdfDoc.addPage([595, 842]);
                     y = 800;
                 }
-
+                
                 // 如果包含非 ASCII 字符但未加载中文字体，过滤掉不支持字符
                 let textToDraw = trimmedLine;
                 if (hasNonAscii && !isChineseFont) {
@@ -182,7 +182,7 @@ app.post('/convert/text-to-pdf', async (req, res) => {
                     textToDraw = trimmedLine.replace(/[^\x00-\x7F]/g, '?');
                     console.warn('Filtering non-ASCII characters (Chinese font not available)');
                 }
-
+                
                 // 绘制文本
                 try {
                     currentPage.drawText(textToDraw, {x: margin, y: y, size: fontSize, font: font});
@@ -203,7 +203,7 @@ app.post('/convert/text-to-pdf', async (req, res) => {
             // 如果绘制失败（通常是因为字符编码问题）
             console.error('Text drawing error:', drawError);
             if (drawError.message && drawError.message.includes('cannot encode')) {
-                return res.status(400).json({
+                return res.status(400).json({ 
                     error: 'Text contains characters that cannot be encoded with the current font. Please ensure a Chinese font is available on the system.',
                     details: drawError.message
                 });
@@ -233,14 +233,14 @@ app.post('/convert/text-to-pdf', async (req, res) => {
 app.post('/convert/markdown-to-html', async (req, res) => {
     try {
         const {markdown} = req.body;
-
+        
         if (!markdown) {
             return res.status(400).json({error: 'Markdown content is required'});
         }
 
         // 使用 marked 将 Markdown 转换为 HTML
         const html = marked.parse(markdown);
-
+        
         res.json({success: true, html: html});
     } catch (error) {
         console.error('Markdown to HTML conversion error:', error);
@@ -254,23 +254,23 @@ app.post('/convert/markdown-to-html', async (req, res) => {
 app.post('/convert/html-to-markdown', async (req, res) => {
     try {
         const {html} = req.body;
-
+        
         if (!html) {
             return res.status(400).json({error: 'HTML content is required'});
         }
 
         // 简单的 HTML 到 Markdown 转换
         let markdown = html.replace(/<h1[^>]*>(.*?)<\/h1>/gi, '# $1\n\n')
-                               .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
-                               .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n')
-                               .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
-                               .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
-                               .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
-                               .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
+            .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '## $1\n\n')
+            .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '### $1\n\n')
+            .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n')
+            .replace(/<strong[^>]*>(.*?)<\/strong>/gi, '**$1**')
+            .replace(/<em[^>]*>(.*?)<\/em>/gi, '*$1*')
+            .replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`')
                                .replace(/<[^>]+>/g, '')     // 移除其他 HTML 标签
                                .replace(/\n{3,}/g, '\n\n')  // 移除多余空行
-                               .trim();
-
+            .trim();
+        
         res.json({success: true, markdown: markdown});
     } catch (error) {
         console.error('HTML to Markdown conversion error:', error);

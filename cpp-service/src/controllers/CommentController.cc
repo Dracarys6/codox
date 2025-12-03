@@ -6,6 +6,37 @@
 #include "../utils/PermissionUtils.h"
 #include "../utils/ResponseUtils.h"
 
+// 辅助函数：从数据库结果构建评论 JSON 对象
+static Json::Value buildCommentJson(const drogon::orm::Row& row) {
+    Json::Value commentJson;
+    commentJson["id"] = row["id"].as<int>();
+    commentJson["doc_id"] = row["doc_id"].as<int>();
+    commentJson["author_id"] = row["author_id"].as<int>();
+    commentJson["content"] = row["content"].as<std::string>();
+    commentJson["created_at"] = row["created_at"].as<std::string>();
+
+    // 解析 anchor JSONB（可选）
+    if (!row["anchor"].isNull()) {
+        commentJson["anchor"] = Json::Value(row["anchor"].as<std::string>());
+    }
+
+    // parent_id（可选，保留字段以支持将来可能的回复功能）
+    if (!row["parent_id"].isNull()) {
+        commentJson["parent_id"] = row["parent_id"].as<int>();
+    }
+
+    // 作者信息
+    Json::Value authorJson;
+    authorJson["id"] = row["author_id"].as<int>();
+    authorJson["email"] = row["email"].as<std::string>();
+    if (!row["nickname"].isNull()) {
+        authorJson["nickname"] = row["nickname"].as<std::string>();
+    }
+    commentJson["author"] = authorJson;
+
+    return commentJson;
+}
+
 void CommentController::getComments(const HttpRequestPtr& req,
                                     std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
     // 1.获取路径参数
@@ -33,7 +64,7 @@ void CommentController::getComments(const HttpRequestPtr& req,
             return;
         }
 
-        // 4.查询评论列表(树形结构)
+        // 4.查询评论列表
         auto db = drogon::app().getDbClient();
         if (!db) {
             ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
@@ -41,7 +72,7 @@ void CommentController::getComments(const HttpRequestPtr& req,
         }
 
         db->execSqlAsync(
-                "SELECT c.id, c.doc_id , c.author_id, c.anchor, c.content, c.parent_id, c.created_at,"
+                "SELECT c.id, c.doc_id, c.author_id, c.anchor, c.content, c.parent_id, c.created_at, "
                 "u.email, up.nickname "
                 "FROM comment c "
                 "LEFT JOIN \"user\" u ON c.author_id = u.id "
@@ -53,33 +84,7 @@ void CommentController::getComments(const HttpRequestPtr& req,
                     Json::Value commentsArray(Json::arrayValue);
 
                     for (const auto& row : r) {
-                        Json::Value commentJson;
-                        commentJson["id"] = row["id"].as<int>();
-                        commentJson["doc_id"] = row["doc_id"].as<int>();
-                        commentJson["author_id"] = row["author_id"].as<int>();
-                        commentJson["content"] = row["content"].as<std::string>();
-                        commentJson["created_at"] = row["created_at"].as<std::string>();
-
-                        // 解析 anchor JSONB
-                        if (!row["anchor"].isNull()) {
-                            commentJson["anchor"] = Json::Value(row["anchor"].as<std::string>());
-                        }
-
-                        // parent_id
-                        if (!row["parent_id"].isNull()) {
-                            commentJson["parent_id"] = row["parent_id"].as<int>();
-                        }
-
-                        // 作者信息
-                        Json::Value authorJson;
-                        authorJson["id"] = row["author_id"].as<int>();
-                        authorJson["email"] = row["email"].as<std::string>();
-                        if (!row["nickname"].isNull()) {
-                            authorJson["nickname"] = row["nickname"].as<std::string>();
-                        }
-                        commentJson["author"] = authorJson;
-
-                        commentsArray.append(commentJson);
+                        commentsArray.append(buildCommentJson(row));
                     }
 
                     responseJson["comments"] = commentsArray;
@@ -88,7 +93,6 @@ void CommentController::getComments(const HttpRequestPtr& req,
                 [=](const drogon::orm::DrogonDbException& e) {
                     ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                              k500InternalServerError);
-                    return;
                 },
                 docIdStr);
     });
@@ -147,42 +151,58 @@ void CommentController::createComments(const HttpRequestPtr& req,
             parentId = json["parent_id"].asInt();
         }
 
-        // 5. 插入评论
+        // 5. 插入评论（统一处理新建和回复）
         auto db = drogon::app().getDbClient();
         if (!db) {
             ResponseUtils::sendError(*callbackPtr, "Database not available", k500InternalServerError);
             return;
         }
 
+        // 统一的响应处理函数
+        auto handleCommentCreated = [=](const drogon::orm::Result& r) {
+            if (r.empty()) {
+                ResponseUtils::sendError(*callbackPtr, "Failed to create comment", k500InternalServerError);
+                return;
+            }
+
+            int commentId = r[0]["id"].as<int>();
+
+            // 查询作者信息以构建完整响应（包含 email 和 nickname）
+            db->execSqlAsync(
+                    "SELECT c.id, c.doc_id, c.author_id, c.anchor, c.content, c.parent_id, c.created_at, "
+                    "u.email, up.nickname "
+                    "FROM comment c "
+                    "LEFT JOIN \"user\" u ON c.author_id = u.id "
+                    "LEFT JOIN user_profile up ON u.id = up.user_id "
+                    "WHERE c.id = $1::integer",
+                    [=](const drogon::orm::Result& authorResult) {
+                        Json::Value responseJson;
+                        if (!authorResult.empty()) {
+                            responseJson = buildCommentJson(authorResult[0]);
+                        } else {
+                            // 如果查询失败，至少返回基本字段
+                            responseJson = buildCommentJson(r[0]);
+                        }
+                        NotificationUtils::createCommentNotification(docId, commentId, userId, 0);
+                        ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                    },
+                    [=](const drogon::orm::DrogonDbException& e) {
+                        // 即使查询作者信息失败，也返回基本评论信息
+                        Json::Value responseJson = buildCommentJson(r[0]);
+                        NotificationUtils::createCommentNotification(docId, commentId, userId, 0);
+                        ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
+                    },
+                    std::to_string(commentId));
+        };
+
+        // 根据是否有 parent_id 执行不同的 SQL
         if (parentId > 0) {
             // 回复评论
             db->execSqlAsync(
                     "INSERT INTO comment (doc_id, author_id, anchor, content, parent_id) "
                     "VALUES ($1, $2, $3::jsonb, $4, $5::integer) "
                     "RETURNING id, doc_id, author_id, anchor, content, parent_id, created_at",
-                    [=](const drogon::orm::Result& r) {
-                        if (r.empty()) {
-                            ResponseUtils::sendError(*callbackPtr, "Failed to create comment", k500InternalServerError);
-                            return;
-                        }
-
-                        int commentId = r[0]["id"].as<int>();
-                        Json::Value responseJson;
-                        responseJson["id"] = commentId;
-                        responseJson["doc_id"] = r[0]["doc_id"].as<int>();
-                        responseJson["author_id"] = r[0]["author_id"].as<int>();
-                        responseJson["content"] = r[0]["content"].as<std::string>();
-                        responseJson["created_at"] = r[0]["created_at"].as<std::string>();
-                        if (!r[0]["anchor"].isNull()) {
-                            responseJson["anchor"] = Json::Value(r[0]["anchor"].as<std::string>());
-                        }
-                        if (!r[0]["parent_id"].isNull()) {
-                            responseJson["parent_id"] = Json::Value(r[0]["parent_id"].as<int>());
-                        }
-
-                        NotificationUtils::createCommentNotification(docId, commentId, userId, 0);
-                        ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
-                    },
+                    handleCommentCreated,
                     [=](const drogon::orm::DrogonDbException& e) {
                         ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                  k500InternalServerError);
@@ -194,29 +214,7 @@ void CommentController::createComments(const HttpRequestPtr& req,
                     "INSERT INTO comment (doc_id, author_id, anchor, content) "
                     "VALUES ($1, $2, $3::jsonb, $4) "
                     "RETURNING id, doc_id, author_id, anchor, content, parent_id, created_at",
-                    [=](const drogon::orm::Result& r) {
-                        if (r.empty()) {
-                            ResponseUtils::sendError(*callbackPtr, "Failed to create comment", k500InternalServerError);
-                            return;
-                        }
-
-                        int commentId = r[0]["id"].as<int>();
-                        Json::Value responseJson;
-                        responseJson["id"] = commentId;
-                        responseJson["doc_id"] = r[0]["doc_id"].as<int>();
-                        responseJson["author_id"] = r[0]["author_id"].as<int>();
-                        responseJson["content"] = r[0]["content"].as<std::string>();
-                        responseJson["created_at"] = r[0]["created_at"].as<std::string>();
-                        if (!r[0]["anchor"].isNull()) {
-                            responseJson["anchor"] = Json::Value(r[0]["anchor"].as<std::string>());
-                        }
-                        if (!r[0]["parent_id"].isNull()) {
-                            responseJson["parent_id"] = Json::Value(r[0]["parent_id"].as<int>());
-                        }
-
-                        NotificationUtils::createCommentNotification(docId, commentId, userId, 0);
-                        ResponseUtils::sendSuccess(*callbackPtr, responseJson, k201Created);
-                    },
+                    handleCommentCreated,
                     [=](const drogon::orm::DrogonDbException& e) {
                         ResponseUtils::sendError(*callbackPtr, "Database error: " + std::string(e.base().what()),
                                                  k500InternalServerError);

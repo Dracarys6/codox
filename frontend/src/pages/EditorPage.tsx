@@ -331,7 +331,7 @@ export function EditorPage() {
                 onSaveReady={(saveFn) => {
                   // 保存函数准备好时，存储到 ref（只在可编辑时启用）
                   if (canEdit) {
-                    saveRequestRef.current = saveFn;
+                  saveRequestRef.current = saveFn;
                   } else {
                     saveRequestRef.current = null;
                   }
